@@ -10,13 +10,16 @@ Route::get('assets/{file}', [TracingUiController::class, 'asset'])
     ->where('file', '.+');
 
 Route::middleware('tracing.auth')->group(function (): void {
-    Route::get('api/requests', [TracingApiController::class, 'index'])->name('api.requests');
-    Route::get('api/requests/{id}', [TracingApiController::class, 'show'])->name('api.request');
+    // Throttle применяется только к JSON-API, чтобы не мешать загрузке SPA-оболочки.
+    Route::middleware('throttle:tracing-api')->group(function (): void {
+        Route::get('api/requests', [TracingApiController::class, 'index'])->name('api.requests');
+        Route::get('api/requests/{id}', [TracingApiController::class, 'show'])->name('api.request');
 
-    Route::get('api/outgoing', [TracingApiController::class, 'outgoingIndex'])->name('api.outgoing');
-    Route::get('api/outgoing/{id}', [TracingApiController::class, 'outgoingShow'])->name('api.outgoing.show');
+        Route::get('api/outgoing', [TracingApiController::class, 'outgoingIndex'])->name('api.outgoing');
+        Route::get('api/outgoing/{id}', [TracingApiController::class, 'outgoingShow'])->name('api.outgoing.show');
+    });
 
-    // SPA catch-all — must be last
+    // SPA catch-all — must be last, НЕ троттлится
     Route::get('{any?}', [TracingUiController::class, 'index'])
         ->name('index')
         ->where('any', '.*');

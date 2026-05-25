@@ -81,7 +81,10 @@ final class OutgoingTracingService
             'response_status' => $response?->getStatusCode(),
             'response_headers' => $response ? array_map(fn($v) => $v, $response->getHeaders()) : null,
             'response_body' => (config('tracing.outgoing.store_response_body', true) && $response !== null)
-                                    ? $this->readBody($response)
+                                    ? $this->maskJsonBody(
+                                        $this->readBody($response, truncate: false),
+                                        config('tracing.outgoing.masked_response_body_params', []),
+                                    )
                                     : null,
             'exception_class' => $exception !== null ? $exception::class : null,
             'exception_message' => $exception?->getMessage(),

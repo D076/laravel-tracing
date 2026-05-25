@@ -255,6 +255,27 @@ php artisan vendor:publish --tag=tracing-config
 | `TRACING_UI_ENABLED` | `true` | Включить UI |
 | `TRACING_UI_PATH` | `tracing` | Префикс URL (`/tracing`) |
 
+### Rate limiting API
+
+Троттлинг применяется **только** к JSON-API (`/{ui.path}/api/*`); SPA-оболочка и ассеты не ограничиваются, поэтому интерфейс всегда грузится. Лимит считается на пользователя (по полиморфному `тип:id`), для гостя — по IP.
+
+| Переменная | Дефолт | Описание |
+|-----------|--------|---------|
+| `TRACING_RATE_LIMIT_ENABLED` | `true` | Включить троттлинг API |
+| `TRACING_RATE_LIMIT_MAX_ATTEMPTS` | `120` | Запросов за окно |
+| `TRACING_RATE_LIMIT_DECAY_MINUTES` | `1` | Длина окна в минутах |
+
+Полный контроль — определите свой limiter в `AppServiceProvider::boot()` (пакет не перезапишет уже заданный `tracing-api`):
+
+```php
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\RateLimiter;
+
+RateLimiter::for('tracing-api', fn ($request) =>
+    Limit::perMinute(300)->by($request->user()?->getMorphClass().':'.$request->user()?->getKey() ?? $request->ip())
+);
+```
+
 ### Исключение маршрутов (входящие)
 
 `TRACING_ENABLED=false` отключает запись в БД, `X-Trace-Id` продолжает работать. Для исключения отдельных маршрутов — `ignore_paths` в конфиге (поддерживает wildcard `*`):
@@ -310,10 +331,22 @@ UI-путь (`tracing/*`) исключается автоматически в `
     'data.api_key',       // $body['data']['api_key']
 ],
 
-// Исходящие запросы (request_body — применяется только для JSON-тел)
+// Исходящие запросы (только JSON-тела)
 'outgoing' => [
+    // тело запроса (request_body)
     'masked_body_params' => ['password', 'secret', 'token'],
+    // тело ответа (response_body); пустой список — маскирование выключено
+    'masked_response_body_params' => ['password', 'secret', 'token', 'access_token', 'refresh_token'],
 ],
+```
+
+**Тело ответа** (только JSON, при `store_response_body=true`) — маскируется до усечения, dot-нотация поддерживается:
+
+```php
+// Входящие ответы
+'masked_response_body_params' => ['password', 'secret', 'token', 'access_token', 'refresh_token'],
+
+// Исходящие ответы — в секции 'outgoing' (см. выше)
 ```
 
 > **Важно:** `password` маскирует только верхний уровень. Для вложенного поля укажите полный путь: `user.password`. Для маршрутов с чувствительными телами (например, `POST /login`) также можно добавить маршрут в `ignore_paths`.

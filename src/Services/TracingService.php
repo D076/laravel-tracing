@@ -63,17 +63,8 @@ final class TracingService
 
         if (config('tracing.store_response_body', false) && !($response instanceof StreamedResponse)) {
             $content = $response->getContent();
-            if ($content !== false) {
-                $responseBody = $this->truncateString($content);
-            }
-
-            if (json_validate($responseBody)) {
-                $responseBody = json_encode(
-                    json_decode($responseBody, true),
-                    JSON_UNESCAPED_UNICODE,
-                );
-            } elseif (config('tracing.store_response_body_only_json', true)) {
-                $responseBody = null;
+            if ($content !== false && $content !== '') {
+                $responseBody = $this->maskResponseBody($content);
             }
         }
 
@@ -137,6 +128,27 @@ final class TracingService
         }
 
         return $data;
+    }
+
+    private function maskResponseBody(string $content): ?string
+    {
+        if (json_validate($content)) {
+            $decoded = json_decode($content, true);
+
+            if (is_array($decoded)) {
+                $decoded = $this->maskBodyParams(
+                    $decoded,
+                    config('tracing.masked_response_body_params', []),
+                );
+            }
+
+            $encoded = json_encode($decoded, JSON_UNESCAPED_UNICODE);
+            $content = $encoded !== false ? $encoded : $content;
+        } elseif (config('tracing.store_response_body_only_json', true)) {
+            return null;
+        }
+
+        return $this->truncateString($content);
     }
 
     private function truncateString(string $content): string

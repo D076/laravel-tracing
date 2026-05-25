@@ -27,8 +27,6 @@ return [
         'log-viewer',
         'log-viewer/*',
         'livewire*',
-        'admin',
-        'admin/*',
         'docs',
         'docs/*',
         'tracing',
@@ -58,6 +56,15 @@ return [
             'secret',
             'token',
         ],
+        // Поля тела ОТВЕТА внешнего API, заменяемые на '[REDACTED]'. Только JSON-тела.
+        // Пустой список — маскирование выключено (тело только усекается).
+        'masked_response_body_params' => [
+            'password',
+            'secret',
+            'token',
+            'access_token',
+            'refresh_token',
+        ],
         'ignore_urls' => [],
         'retention_days' => (int) env('TRACING_OUTGOING_RETENTION_DAYS', 30),
     ],
@@ -73,6 +80,23 @@ return [
         'enabled' => (bool) env('TRACING_UI_ENABLED', true),
         'path' => env('TRACING_UI_PATH', 'tracing'),
         'middleware' => ['web'],
+    ],
+
+    /*
+     | Rate limiting для JSON-API интерфейса (/{ui.path}/api/*).
+     | Применяется ТОЛЬКО к API; SPA-оболочка и ассеты не троттлятся.
+     | Лимит на пользователя (по полиморфному типу+id), для гостя — по IP.
+     |
+     | Переопределение из приложения:
+     |  - числа: env ниже или опубликованный конфиг;
+     |  - выключить: TRACING_RATE_LIMIT_ENABLED=false;
+     |  - полный контроль: RateLimiter::for('tracing-api', ...) в AppServiceProvider
+     |    (пакет не перезапишет уже определённый limiter).
+     */
+    'rate_limit' => [
+        'enabled' => (bool) env('TRACING_RATE_LIMIT_ENABLED', true),
+        'max_attempts' => (int) env('TRACING_RATE_LIMIT_MAX_ATTEMPTS', 120),
+        'decay_minutes' => (int) env('TRACING_RATE_LIMIT_DECAY_MINUTES', 1),
     ],
 
     /*
@@ -107,6 +131,19 @@ return [
      */
     'masked_response_headers' => [
         'set-cookie',
+    ],
+
+    /*
+     | Поля тела ОТВЕТА, заменяемые на '[REDACTED]' перед сохранением (только JSON).
+     | Применяется при store_response_body=true. Dot-нотация поддерживается.
+     | Пустой список — маскирование выключено (тело только усекается).
+     */
+    'masked_response_body_params' => [
+        'password',
+        'secret',
+        'token',
+        'access_token',
+        'refresh_token',
     ],
 
     /*

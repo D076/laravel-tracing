@@ -8,6 +8,7 @@ use D076\Tracing\Http\Middleware\TracingAuthMiddleware;
 use D076\Tracing\Middleware\TracingMiddleware;
 use D076\Tracing\Middleware\OutgoingTracingMiddleware;
 use D076\Tracing\Middleware\TraceIdMiddleware;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
@@ -15,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Symfony\Component\HttpFoundation\Response;
@@ -87,6 +89,8 @@ final class TracingServiceProvider extends ServiceProvider
 
     private function bootUi(): void
     {
+        $this->registerRateLimiter();
+
         $this->loadViewsFrom(__DIR__ . '/../../resources/views', 'tracing');
 
         // Определяем gate только если он ещё не задан (позволяет переопределить в AppServiceProvider)
@@ -101,5 +105,30 @@ final class TracingServiceProvider extends ServiceProvider
             ->middleware(config('tracing.ui.middleware', ['web']))
             ->name('tracing.')
             ->group(__DIR__ . '/../Http/routes.php');
+    }
+
+    private function registerRateLimiter(): void
+    {
+        // Не перезаписываем limiter, если приложение определило свой 'tracing-api'.
+        if (RateLimiter::limiter('tracing-api') !== null) {
+            return;
+        }
+
+        RateLimiter::for('tracing-api', function (Request $request): Limit {
+            if (!config('tracing.rate_limit.enabled', true)) {
+                return Limit::none();
+            }
+
+            $user = $request->user();
+            // Ключ учитывает полиморфный тип: Admin#1 и Customer#1 — разные бакеты.
+            $key = $user !== null
+                ? $user->getMorphClass() . ':' . $user->getKey()
+                : (string) $request->ip();
+
+            return Limit::perMinutes(
+                (int) config('tracing.rate_limit.decay_minutes', 1),
+                (int) config('tracing.rate_limit.max_attempts', 120),
+            )->by($key);
+        });
     }
 }
