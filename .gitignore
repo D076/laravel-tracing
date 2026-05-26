@@ -7,4 +7,5 @@ docker-compose.yml
 /docker/
 *.md
 !README.md
+!CHANGELOG.md
 !/docs/*.md
