@@ -9,7 +9,7 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-05-26
+## [0.2.0] - 2026-05-27
 
 ### Added
 - `trace_id` propagation across job boundaries via `Illuminate\Support\Facades\Context`. Queued jobs, broadcasted events, chains, and retries automatically inherit the parent request's `trace_id` — no setup required in the host app.
@@ -20,6 +20,10 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ### Changed
 - Documentation split from a single README into `docs/architecture.md`, `docs/configuration.md`, and `docs/database.md`. README now contains only a quick start.
+- Minimum PHP version lowered to **8.3** (was 8.4). No code changes required.
+
+### Security
+- Outbound `application/x-www-form-urlencoded` request bodies now go through the same masking pipeline as JSON bodies. Previously sensitive fields (e.g. `password=...`) sent via `Http::asForm()` were stored in `tracing_outgoing_requests.request_body` in plain text. Masked keys are reused from `tracing.outgoing.masked_body_params`; nested fields follow PHP bracket syntax (`user[password]=...` ↔ `user.password`).
 
 ## [0.1.0] - 2026-05-25
 

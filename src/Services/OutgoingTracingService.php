@@ -73,23 +73,63 @@ final class OutgoingTracingService
             'url' => (string) $request->getUri(),
             'request_headers' => $requestHeaders ?: null,
             'request_body' => config('tracing.outgoing.store_request_body', true)
-                                    ? $this->maskJsonBody(
+                                    ? $this->maskBody(
                                         $this->readBody($request, truncate: false),
                                         config('tracing.outgoing.masked_body_params', []),
+                                        $request->getHeaderLine('Content-Type') ?: null,
                                     )
                                     : null,
             'response_status' => $response?->getStatusCode(),
             'response_headers' => $response ? array_map(fn($v) => $v, $response->getHeaders()) : null,
             'response_body' => (config('tracing.outgoing.store_response_body', true) && $response !== null)
-                                    ? $this->maskJsonBody(
+                                    ? $this->maskBody(
                                         $this->readBody($response, truncate: false),
                                         config('tracing.outgoing.masked_response_body_params', []),
+                                        $response->getHeaderLine('Content-Type') ?: null,
                                     )
                                     : null,
             'exception_class' => $exception !== null ? $exception::class : null,
             'exception_message' => $exception?->getMessage(),
             'duration_ms' => $durationMs,
         ];
+    }
+
+    private function maskBody(?string $body, array $maskedKeys, ?string $contentType): ?string
+    {
+        if ($body === null) {
+            return null;
+        }
+
+        if ($contentType !== null && str_contains(strtolower($contentType), 'application/x-www-form-urlencoded')) {
+            return $this->maskFormBody($body, $maskedKeys);
+        }
+
+        return $this->maskJsonBody($body, $maskedKeys);
+    }
+
+    private function maskFormBody(?string $body, array $maskedKeys): ?string
+    {
+        if ($body === null) {
+            return null;
+        }
+
+        if ($maskedKeys !== []) {
+            parse_str($body, $parsed);
+
+            foreach ($maskedKeys as $key) {
+                if (Arr::has($parsed, $key)) {
+                    data_set($parsed, $key, '[REDACTED]');
+                }
+            }
+
+            $body = http_build_query($parsed);
+        }
+
+        $max = (int) config('tracing.outgoing.max_body_size', 10000);
+
+        return strlen($body) > $max
+            ? substr($body, 0, $max) . '...[truncated]'
+            : $body;
     }
 
     private function maskJsonBody(?string $body, array $maskedKeys): ?string

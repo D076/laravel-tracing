@@ -131,7 +131,7 @@ Sensitive values are replaced with `[REDACTED]` before being written to the data
     'data.api_key',       // $body['data']['api_key']
 ],
 
-// Outbound requests (JSON bodies only)
+// Outbound requests (JSON and application/x-www-form-urlencoded bodies)
 'outgoing' => [
     // request body (request_body)
     'masked_body_params' => ['password', 'secret', 'token'],
@@ -150,6 +150,8 @@ Sensitive values are replaced with `[REDACTED]` before being written to the data
 ```
 
 > **Note:** `password` masks only the top level. For a nested field, give the full path: `user.password`. For routes with sensitive bodies (e.g. `POST /login`), you can also add the route to `ignore_paths`.
+
+> **Form-encoded outbound bodies.** For `application/x-www-form-urlencoded` outbound bodies, masking is dispatched by `Content-Type` and the body is round-tripped through `parse_str` / `http_build_query`. Nested fields follow PHP's bracket syntax (`user[password]=...`) and are addressed via dot notation (`user.password`) in the masked-keys list. Bodies sent without an explicit `Content-Type` are treated as JSON for backward compatibility; bodies with unknown content types are not parsed and pass through unchanged (only truncated).
 
 ## Async mode (queue)
 
