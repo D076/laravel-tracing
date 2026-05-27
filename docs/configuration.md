@@ -182,6 +182,94 @@ public function __invoke()
 
 For non-HTTP entry points (artisan commands, the scheduler), the id is generated on first access and also auto-added to Context, so jobs dispatched from there inherit it too.
 
+## Separate database for tracing
+
+By default the two tracing tables (`tracing_requests`, `tracing_outgoing_requests`) are created in your application's primary database. For production workloads where you log 100 % of traffic this means constant inserts and large table growth alongside your business data. A dedicated database isolates that load completely.
+
+### Why bother?
+
+| Concern | Without isolation | With isolation |
+|---------|------------------|----------------|
+| Disk growth | Tracing rows compete with app data on the same volume | Tracing DB can live on a separate, cheaper volume |
+| Query plan pollution | Large tracing tables affect the query planner for unrelated tables | Completely separate statistics |
+| Backup / restore | You must back up or restore tracing data together with app data | Independent schedules; tracing data can be excluded from app backups |
+| Connection pool pressure | Tracing writes share the same pool as app queries | Dedicated connection pool |
+
+### Setup
+
+**1. Add a connection in `config/database.php`:**
+
+```php
+'connections' => [
+    // Your existing connections …
+
+    'tracing' => [
+        'driver'   => 'pgsql',          // or 'mysql' / 'sqlite'
+        'host'     => env('TRACING_DB_HOST', '127.0.0.1'),
+        'port'     => env('TRACING_DB_PORT', '5432'),
+        'database' => env('TRACING_DB_DATABASE', 'tracing'),
+        'username' => env('TRACING_DB_USERNAME', 'tracing'),
+        'password' => env('TRACING_DB_PASSWORD', ''),
+        'charset'  => 'utf8',
+        'prefix'   => '',
+        'search_path' => 'public',
+        'sslmode'  => 'prefer',
+    ],
+],
+```
+
+**2. Point the package at that connection:**
+
+```dotenv
+TRACING_DB_CONNECTION=tracing
+```
+
+**3. Run migrations** — they detect `TRACING_DB_CONNECTION` automatically and create both tables on the right database:
+
+```bash
+php artisan migrate
+```
+
+That's it. Writes, reads (UI + API), and pruning all route through the same `tracing` connection automatically. Your application's primary database is never touched by tracing traffic.
+
+### docker-compose example (dedicated Postgres)
+
+```yaml
+services:
+  app:
+    environment:
+      TRACING_DB_CONNECTION: tracing
+      TRACING_DB_HOST: tracing_db
+      TRACING_DB_DATABASE: tracing
+      TRACING_DB_USERNAME: tracing
+      TRACING_DB_PASSWORD: secret
+
+  tracing_db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tracing
+      POSTGRES_USER: tracing
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - tracing_db_data:/var/lib/postgresql/data
+    tmpfs:
+      - /tmp
+
+volumes:
+  tracing_db_data:
+```
+
+### What changes under the hood
+
+When `TRACING_DB_CONNECTION` is set:
+
+- **Migrations** — both `tracing_requests` and `tracing_outgoing_requests` are created on that connection, not the default one.
+- **Writes** — `TracingRequest` and `OutgoingRequest` models override `getConnectionName()` and route all inserts to the configured connection.
+- **Reads** — the web UI and its JSON API query the same connection; no cross-database joins.
+- **Pruning** — `model:prune` deletes from the correct connection.
+
+Your primary database is completely unaware of tracing.
+
 ## Pruning old records
 
 Both models implement `MassPrunable`. Add to the scheduler (`routes/console.php`):

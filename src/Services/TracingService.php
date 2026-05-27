@@ -34,13 +34,7 @@ final class TracingService
 
     public function write(array $data): void
     {
-        $connection = config('tracing.connection');
-
-        if ($connection) {
-            TracingRequest::on($connection)->create($data);
-        } else {
-            TracingRequest::create($data);
-        }
+        TracingRequest::create($data);
     }
 
     public function maskHeaders(array $headers, array $maskedNames): array

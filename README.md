@@ -7,7 +7,7 @@ Optionally ships a web UI at `/tracing` for browsing recorded requests.
 
 ## Requirements
 
-- **PHP** 8.4+
+- **PHP** 8.3+
 - **Laravel** 11 / 12 / 13
 - **Database**: PostgreSQL / MySQL / SQLite
 

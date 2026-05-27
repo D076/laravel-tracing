@@ -41,13 +41,7 @@ final class OutgoingTracingService
 
     public function write(array $data): void
     {
-        $connection = config('tracing.connection');
-
-        if ($connection) {
-            OutgoingRequest::on($connection)->create($data);
-        } else {
-            OutgoingRequest::create($data);
-        }
+        OutgoingRequest::create($data);
     }
 
     private function buildPayload(

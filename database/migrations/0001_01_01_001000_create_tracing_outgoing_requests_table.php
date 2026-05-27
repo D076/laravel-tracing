@@ -5,6 +5,11 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
+    public function getConnection(): ?string
+    {
+        return config('tracing.connection');
+    }
+
     public function up(): void
     {
         Schema::create('tracing_outgoing_requests', static function (Blueprint $table): void {

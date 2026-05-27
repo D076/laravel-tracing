@@ -37,6 +37,11 @@ final class TracingRequest extends Model
 
     protected $table = 'tracing_requests';
 
+    public function getConnectionName(): ?string
+    {
+        return config('tracing.connection') ?: parent::getConnectionName();
+    }
+
     protected $guarded = [];
 
     public $incrementing = false;
