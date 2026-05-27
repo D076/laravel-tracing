@@ -72,6 +72,21 @@ Log::info('processing order', ['trace_id' => app(TraceId::class)->get()]);
 
 Queued jobs require no setup — `trace_id` is automatically inherited from the parent HTTP request (see [docs/configuration.md → trace_id propagation to jobs](docs/configuration.md#trace_id-propagation-to-jobs)).
 
+## Performance overhead
+
+Measured with `phpbench` on a minimal testbench app, SQLite in-memory, no opcache (Docker, PHP 8.4):
+
+| Mode | Overhead per request |
+|------|---------------------|
+| Baseline (tracing disabled) | — |
+| `TRACING_DRIVER=database` | ~+0.17 ms |
+| `TRACING_DRIVER=database` + `TRACING_STORE_RESPONSE_BODY=true` | ~+0.21 ms |
+| `TRACING_DRIVER=queue` (sync driver, worst case) | ~+0.31 ms |
+
+> With a real async queue (Redis + Horizon), the main-request overhead for `TRACING_DRIVER=queue` drops to near zero — only job dispatch cost, while the actual DB write happens in the worker.
+>
+> Use `TRACING_DRIVER=queue` if latency matters; use a [separate database connection](docs/configuration.md#separate-database-for-tracing) if I/O isolation matters.
+
 ## Documentation
 
 - **[Architecture](docs/architecture.md)** — package components, lifecycle of inbound and outbound requests.

@@ -9,6 +9,9 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
+### Added
+- `phpbench` benchmark suite (`benchmarks/`) measuring per-request overhead in four modes; results table added to README.
+
 ## [0.2.1] - 2026-05-27
 
 ### Added
