@@ -1,5 +1,10 @@
 # d076/laravel-tracing
 
+[![Tests](https://github.com/d076/laravel-tracing/actions/workflows/tests.yml/badge.svg)](https://github.com/d076/laravel-tracing/actions/workflows/tests.yml)
+[![PHP](https://img.shields.io/badge/PHP-8.3%2B-blue)](https://www.php.net)
+[![Laravel](https://img.shields.io/badge/Laravel-11%20%7C%2012%20%7C%2013-red)](https://laravel.com)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A Laravel package for tracing inbound and outbound HTTP requests.
 Each inbound request gets a unique `X-Trace-Id` (UUID7); every outbound request made via the `Http` facade, plus any jobs and events dispatched from that request, **automatically** inherit the same `trace_id`.
 

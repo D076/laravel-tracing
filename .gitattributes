@@ -1,4 +1,5 @@
 # Keep released package lean — exclude dev-only files from `composer require` dist archives
+/.github                     export-ignore
 /.gitattributes              export-ignore
 /.gitignore                  export-ignore
 /.idea                       export-ignore

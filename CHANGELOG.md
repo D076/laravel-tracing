@@ -9,13 +9,17 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
-### Fixed
-- `TRACING_DB_CONNECTION` now correctly routes **all** tracing operations — writes, reads (UI + API), and pruning — to the configured connection. Previously only inserts used the custom connection; `prunable()` queries and the UI API silently fell back to the default database.
+## [0.2.1] - 2026-05-27
 
 ### Added
+- GitHub Actions CI (`tests.yml`): PHP 8.3/8.4/8.5 × Laravel 11/12/13 matrix on SQLite, plus a separate cross-DB matrix for PostgreSQL and MySQL.
+- README badges: CI status, PHP version, Laravel version, license.
 - Both models override `getConnectionName()` so the custom connection is used automatically without calling `::on(...)` explicitly.
 - Both migrations implement `getConnection()` so `php artisan migrate` creates `tracing_requests` and `tracing_outgoing_requests` on the configured connection, not the default one.
 - `docs/configuration.md` gains a dedicated **"Separate database for tracing"** section with setup instructions, a docker-compose example, and an explanation of what changes under the hood.
+
+### Fixed
+- `TRACING_DB_CONNECTION` now correctly routes **all** tracing operations — writes, reads (UI + API), and pruning — to the configured connection. Previously only inserts used the custom connection; `prunable()` queries and the UI API silently fell back to the default database.
 
 ## [0.2.0] - 2026-05-27
 
@@ -47,6 +51,7 @@ Initial release.
 - Retention via `php artisan model:prune` (`tracing.retention_days`, default 30).
 - Cross-database SQL compatibility: PostgreSQL, MySQL, SQLite.
 
-[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/d076/laravel-tracing/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/d076/laravel-tracing/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/d076/laravel-tracing/releases/tag/v0.1.0
