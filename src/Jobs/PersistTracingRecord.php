@@ -13,6 +13,7 @@ final class PersistTracingRecord implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /** @param array<string, mixed> $data */
     public function __construct(private readonly array $data)
     {
     }

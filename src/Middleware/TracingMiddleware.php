@@ -80,6 +80,7 @@ final class TracingMiddleware
         return false;
     }
 
+    /** @return array<string, mixed>|null */
     private function captureBody(Request $request): ?array
     {
         if (!in_array($request->method(), ['POST', 'PUT', 'PATCH'], true)) {

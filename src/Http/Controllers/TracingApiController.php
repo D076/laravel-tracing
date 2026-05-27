@@ -55,15 +55,16 @@ final class TracingApiController extends Controller
 
         if ($search = $request->query('search')) {
             $isUuid = Str::isUuid($search);
-            $query->where(function ($q) use ($search, $isUuid): void {
+            /** @var \Illuminate\Database\Connection $conn */
+            $conn = $query->getConnection();
+            $jsonCast = $conn->getDriverName() === 'pgsql'
+                ? 'request_headers::text'
+                : 'CAST(request_headers AS CHAR)';
+            $query->where(function ($q) use ($search, $isUuid, $jsonCast): void {
                 if ($isUuid) {
                     $q->where('id', $search);
                 }
                 $term = strtolower($search);
-                $jsonCast = $q->getConnection()->getDriverName() === 'pgsql'
-                    ? 'request_headers::text'
-                    : 'CAST(request_headers AS CHAR)';
-
                 $q->orWhereRaw('lower(url) like ?', ['%' . $term . '%'])
                     ->orWhereRaw("lower({$jsonCast}) like ?", ['%' . $term . '%']);
             });

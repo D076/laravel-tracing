@@ -24,7 +24,8 @@
   "require-dev": {
     "orchestra/testbench": "^9.0|^10.0|^11.0",
     "pestphp/pest": "^3.0",
-    "phpbench/phpbench": "^1.6"
+    "phpbench/phpbench": "^1.6",
+    "larastan/larastan": "^3.9"
   },
   "license": "MIT",
   "autoload": {

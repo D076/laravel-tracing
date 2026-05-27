@@ -39,11 +39,13 @@ final class OutgoingTracingService
         }
     }
 
+    /** @param array<string, mixed> $data */
     public function write(array $data): void
     {
         OutgoingRequest::create($data);
     }
 
+    /** @return array<string, mixed> */
     private function buildPayload(
         string $traceId,
         RequestInterface $request,
@@ -88,6 +90,7 @@ final class OutgoingTracingService
         ];
     }
 
+    /** @param list<string> $maskedKeys */
     private function maskBody(?string $body, array $maskedKeys, ?string $contentType): ?string
     {
         if ($body === null) {
@@ -101,6 +104,7 @@ final class OutgoingTracingService
         return $this->maskJsonBody($body, $maskedKeys);
     }
 
+    /** @param list<string> $maskedKeys */
     private function maskFormBody(?string $body, array $maskedKeys): ?string
     {
         if ($body === null) {
@@ -126,6 +130,7 @@ final class OutgoingTracingService
             : $body;
     }
 
+    /** @param list<string> $maskedKeys */
     private function maskJsonBody(?string $body, array $maskedKeys): ?string
     {
         if ($body === null) {

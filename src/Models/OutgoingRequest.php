@@ -13,10 +13,10 @@ use Illuminate\Support\Carbon;
  * @property string|null $trace_id
  * @property string $method
  * @property string $url
- * @property array|null $request_headers
+ * @property array<string, list<string>>|null $request_headers
  * @property string|null $request_body
  * @property int|null $response_status
- * @property array|null $response_headers
+ * @property array<string, list<string>>|null $response_headers
  * @property string|null $response_body
  * @property string|null $exception_class
  * @property string|null $exception_message
@@ -42,6 +42,7 @@ final class OutgoingRequest extends Model
 
     protected $keyType = 'string';
 
+    /** @return Builder<self> */
     public function prunable(): Builder
     {
         $days = (int) config('tracing.outgoing.retention_days', 0);
@@ -53,6 +54,7 @@ final class OutgoingRequest extends Model
         return self::query()->where('created_at', '<=', now()->subDays($days));
     }
 
+    /** @return array<string, string> */
     protected function casts(): array
     {
         return [

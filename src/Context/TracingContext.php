@@ -20,10 +20,13 @@ final class TracingContext
 
     public ?string    $routePath = null;
 
+    /** @var array<string, list<string>>|null */
     public ?array     $requestHeaders = null;
 
+    /** @var array<string, mixed>|null */
     public ?array     $queryParams = null;
 
+    /** @var array<string, mixed>|null */
     public ?array     $bodyParams = null;
 
     public ?string    $ipAddress = null;

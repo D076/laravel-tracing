@@ -15,11 +15,11 @@ use Illuminate\Support\Carbon;
  * @property string $url
  * @property string|null $route_name
  * @property string|null $route_path
- * @property array|null $request_headers
- * @property array|null $query_params
- * @property array|null $body_params
+ * @property array<string, list<string>>|null $request_headers
+ * @property array<string, mixed>|null $query_params
+ * @property array<string, mixed>|null $body_params
  * @property int $response_status
- * @property array|null $response_headers
+ * @property array<string, list<string>>|null $response_headers
  * @property string|null $response_body
  * @property string|null $authenticatable_id
  * @property string|null $authenticatable_type
@@ -48,11 +48,13 @@ final class TracingRequest extends Model
 
     protected $keyType = 'string';
 
+    /** @return MorphTo<\Illuminate\Database\Eloquent\Model, $this> */
     public function authenticatable(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /** @return Builder<self> */
     public function prunable(): Builder
     {
         $days = (int) config('tracing.retention_days', 0);
@@ -64,6 +66,7 @@ final class TracingRequest extends Model
         return self::query()->where('created_at', '<=', now()->subDays($days));
     }
 
+    /** @return array<string, string> */
     protected function casts(): array
     {
         return [

@@ -49,6 +49,9 @@ jobs:
       - name: Update dependencies
         run: composer update --prefer-dist --no-interaction
 
+      - name: Run PHPStan
+        run: ./vendor/bin/phpstan analyse --no-progress --memory-limit=512M
+
       - name: Run tests
         run: ./vendor/bin/pest --no-coverage
 

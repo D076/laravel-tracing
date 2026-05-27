@@ -32,11 +32,17 @@ final class TracingService
         }
     }
 
+    /** @param array<string, mixed> $data */
     public function write(array $data): void
     {
         TracingRequest::create($data);
     }
 
+    /**
+     * @param array<string, list<string>> $headers
+     * @param list<string> $maskedNames
+     * @return array<string, list<string>>
+     */
     public function maskHeaders(array $headers, array $maskedNames): array
     {
         $masked = array_map('strtolower', $maskedNames);
@@ -51,6 +57,7 @@ final class TracingService
         return $result;
     }
 
+    /** @return array<string, mixed> */
     private function buildPayload(TracingContext $ctx, Response $response): array
     {
         $responseBody = null;
@@ -93,6 +100,11 @@ final class TracingService
         ];
     }
 
+    /**
+     * @param array<string, mixed>|null $data
+     * @param list<string> $maskedKeys
+     * @return array<string, mixed>|null
+     */
     public function maskBodyParams(?array $data, array $maskedKeys): ?array
     {
         if ($data === null || $maskedKeys === []) {
@@ -108,6 +120,10 @@ final class TracingService
         return $data;
     }
 
+    /**
+     * @param array<string, mixed>|null $data
+     * @return array<string, mixed>|null
+     */
     private function truncateJson(?array $data): ?array
     {
         if ($data === null) {

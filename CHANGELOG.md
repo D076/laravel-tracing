@@ -9,8 +9,15 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-27
+
 ### Added
 - `phpbench` benchmark suite (`benchmarks/`) measuring per-request overhead in four modes; results table added to README.
+- PHPStan level 6 via `larastan/larastan` (`phpstan.neon`); added as a CI step before tests.
+- Generic array types (`array<string, mixed>`, `list<string>`, `array<string, list<string>>`) on all public service and model signatures.
+
+### Fixed
+- `TracingApiController`: `getDriverName()` was called inside a `where()` closure on `ConnectionInterface`, which does not declare that method. Moved outside the closure where the Eloquent Builder's concrete connection type is known.
 
 ## [0.2.1] - 2026-05-27
 
@@ -54,7 +61,8 @@ Initial release.
 - Retention via `php artisan model:prune` (`tracing.retention_days`, default 30).
 - Cross-database SQL compatibility: PostgreSQL, MySQL, SQLite.
 
-[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/d076/laravel-tracing/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/d076/laravel-tracing/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/d076/laravel-tracing/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/d076/laravel-tracing/releases/tag/v0.1.0
