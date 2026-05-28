@@ -46,13 +46,6 @@
       "pestphp/pest-plugin": true
     }
   },
-  "extra": {
-    "laravel": {
-      "providers": [
-        "D076\\Tracing\\Providers\\TracingServiceProvider"
-      ]
-    }
-  },
   "minimum-stability": "stable",
   "prefer-stable": true
 }

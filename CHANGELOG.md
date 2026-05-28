@@ -9,6 +9,11 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-05-28
+
+### Changed
+- Service provider is no longer auto-discovered. Register `D076\Tracing\Providers\TracingServiceProvider` explicitly in `bootstrap/providers.php`.
+
 ## [0.2.2] - 2026-05-27
 
 ### Added
@@ -61,7 +66,8 @@ Initial release.
 - Retention via `php artisan model:prune` (`tracing.retention_days`, default 30).
 - Cross-database SQL compatibility: PostgreSQL, MySQL, SQLite.
 
-[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/d076/laravel-tracing/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/d076/laravel-tracing/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/d076/laravel-tracing/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/d076/laravel-tracing/compare/v0.1.0...v0.2.0

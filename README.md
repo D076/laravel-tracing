@@ -20,10 +20,22 @@ Optionally ships a web UI at `/tracing` for browsing recorded requests.
 
 ```bash
 composer require d076/laravel-tracing
-php artisan migrate
 ```
 
-The service provider is auto-discovered via Laravel Package Auto-Discovery. No changes to `bootstrap/app.php` are required — middleware and the Guzzle handler are registered by the provider itself.
+Register the service provider in `bootstrap/providers.php`:
+
+```php
+return [
+    App\Providers\AppServiceProvider::class,
+    D076\Tracing\Providers\TracingServiceProvider::class,
+];
+```
+
+Run migrations:
+
+```bash
+php artisan migrate
+```
 
 Publish the config (optional):
 
