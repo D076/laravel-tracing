@@ -3,7 +3,6 @@
 use D076\Tracing\Models\OutgoingRequest;
 use D076\Tracing\Models\TracingRequest;
 use GuzzleHttp\Exception\ConnectException;
-use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request as Psr7Request;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
@@ -59,20 +58,20 @@ it('records an outgoing request that fails to connect (no response)', function (
         ->and($record->exception_message)->not->toBeEmpty();
 });
 
-it('records a transfer error that carries no response (e.g. read timeout)', function () {
-    // A responseless RequestException exercises the OTHER Laravel marshalling
-    // branch (marshalRequestExceptionWithoutResponse), distinct from a ConnectException.
+it('records an outgoing request that times out (no response)', function () {
+    // A real read/connect timeout surfaces as a Guzzle ConnectException (cURL 28),
+    // which Laravel marshals into ConnectionException on every supported version.
     Http::fake(function () {
-        throw new RequestException(
+        throw new ConnectException(
             'cURL error 28: Operation timed out',
             new Psr7Request('GET', 'https://api.example.com/slow'),
         );
     });
 
     try {
-        Http::get('https://api.example.com/slow');
+        Http::timeout(1)->get('https://api.example.com/slow');
     } catch (ConnectionException) {
-        // Laravel marshals a responseless RequestException into a ConnectionException too.
+        // expected
     }
 
     expect(OutgoingRequest::count())->toBe(1);
