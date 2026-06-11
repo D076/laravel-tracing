@@ -104,6 +104,7 @@ it('links a failed outgoing request to the incoming request via trace_id', funct
 
     $traceId = $response->headers->get('X-Trace-Id');
     expect($traceId)->not->toBeEmpty();
+    expect(OutgoingRequest::count())->toBe(1);
 
     $outgoing = OutgoingRequest::first();
     // The incoming record stores the trace id as its primary `id`;
@@ -114,4 +115,111 @@ it('links a failed outgoing request to the incoming request via trace_id', funct
         ->and($incoming)->not->toBeNull()
         ->and($incoming->id)->toBe($traceId)
         ->and($outgoing->exception_class)->toBe(ConnectionException::class);
+});
+
+it('records a 5xx even when the caller enables Guzzle http_errors', function () {
+    Http::fake(['*' => Http::response('boom', 500)]);
+
+    try {
+        Http::withOptions(['http_errors' => true])->get('https://api.example.com/boom');
+    } catch (\Throwable) {
+        // Guzzle/Laravel throws on 5xx when http_errors is on — the response is still recorded.
+    }
+
+    expect(OutgoingRequest::count())->toBe(1);
+
+    // Recorded as a normal response (via the middleware fallback), not as an exception.
+    $record = OutgoingRequest::first();
+    expect($record->response_status)->toBe(500)
+        ->and($record->url)->toContain('api.example.com/boom')
+        ->and($record->exception_class)->toBeNull();
+});
+
+it('records a connection failure once when http_errors is enabled', function () {
+    Http::fake(function () {
+        throw new ConnectException('refused', new Psr7Request('GET', 'https://api.example.com/down'));
+    });
+
+    try {
+        Http::withOptions(['http_errors' => true])->get('https://api.example.com/down');
+    } catch (ConnectionException) {
+        // expected
+    }
+
+    // The middleware fallback only handles fulfilled responses; a rejection is left
+    // to the ConnectionFailed event. Exactly one of them must record — never both.
+    expect(OutgoingRequest::count())->toBe(1)
+        ->and(OutgoingRequest::first()->response_status)->toBeNull()
+        ->and(OutgoingRequest::first()->exception_class)->toBe(ConnectionException::class);
+});
+
+it('records a 4xx with http_errors enabled', function () {
+    Http::fake(['*' => Http::response('nope', 404)]);
+
+    try {
+        Http::withOptions(['http_errors' => true])->get('https://api.example.com/missing');
+    } catch (\Throwable) {
+        // expected
+    }
+
+    expect(OutgoingRequest::count())->toBe(1)
+        ->and(OutgoingRequest::first()->response_status)->toBe(404);
+});
+
+it('does not double-record a 2xx when http_errors is enabled', function () {
+    Http::fake(['*' => Http::response('ok', 200)]);
+
+    Http::withOptions(['http_errors' => true])->get('https://api.example.com/ok');
+
+    // 2xx is fulfilled all the way out, so the ResponseReceived event records it.
+    // The middleware fallback must NOT add a second row.
+    expect(OutgoingRequest::count())->toBe(1)
+        ->and(OutgoingRequest::first()->response_status)->toBe(200);
+});
+
+it('records every request in a sequence even when one of them fails', function () {
+    Http::fake([
+        'https://ok-1.test/*' => Http::response('one', 200),
+        'https://down.test/*' => function () {
+            throw new ConnectException('refused', new Psr7Request('GET', 'https://down.test/b'));
+        },
+        'https://ok-2.test/*' => Http::response('two', 200),
+    ]);
+
+    Http::get('https://ok-1.test/a');
+    try {
+        Http::get('https://down.test/b');
+    } catch (ConnectionException) {
+        // failure of one request must not suppress logging of the others
+    }
+    Http::get('https://ok-2.test/c');
+
+    expect(OutgoingRequest::count())->toBe(3);
+
+    $byUrl = OutgoingRequest::all()->keyBy(fn ($r) => $r->url);
+    expect($byUrl['https://ok-1.test/a']->response_status)->toBe(200)
+        ->and($byUrl['https://ok-1.test/a']->exception_class)->toBeNull()
+        ->and($byUrl['https://down.test/b']->response_status)->toBeNull()
+        ->and($byUrl['https://down.test/b']->exception_class)->toBe(ConnectionException::class)
+        ->and($byUrl['https://ok-2.test/c']->response_status)->toBe(200)
+        ->and($byUrl['https://ok-2.test/c']->exception_class)->toBeNull();
+});
+
+it('records both the prior and the failed request when the failure is left uncaught', function () {
+    Http::fake([
+        'https://ok.test/*' => Http::response('ok', 200),
+        'https://down.test/*' => function () {
+            throw new ConnectException('refused', new Psr7Request('GET', 'https://down.test/b'));
+        },
+    ]);
+
+    Http::get('https://ok.test/a');
+
+    // The terminal ConnectionFailed event fires before the exception propagates,
+    // so even an unhandled failure is recorded — along with the request before it.
+    expect(fn () => Http::get('https://down.test/b'))->toThrow(ConnectionException::class);
+
+    expect(OutgoingRequest::count())->toBe(2)
+        ->and(OutgoingRequest::whereNull('response_status')->whereNotNull('exception_class')->count())->toBe(1)
+        ->and(OutgoingRequest::where('response_status', 200)->count())->toBe(1);
 });

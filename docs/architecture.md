@@ -81,9 +81,11 @@ Captures inbound request data into `TracingContext`. After the response is sent 
 
 ### `Middleware/OutgoingTracingMiddleware`
 
-Guzzle handler-stack middleware, registered via `Http::globalMiddleware()`. Its **only** job is request mutation: when `propagate_trace_id=true`, it adds an `X-Trace-Id` header to outbound requests (useful for distributed tracing). Mutating the outgoing request is only possible at the middleware level — events cannot do it.
+Guzzle handler-stack middleware, registered via `Http::globalMiddleware()`. Its primary job is request mutation: when `propagate_trace_id=true`, it adds an `X-Trace-Id` header to outbound requests (useful for distributed tracing). Mutating the outgoing request is only possible at the middleware level — events cannot do it.
 
-The middleware does **not** record anything. Recording lives in `RecordOutgoingRequest` (see below), because a Guzzle middleware's `->then(onRejected)` only catches *rejected promises* and silently misses exceptions thrown synchronously inside the handler stack — e.g. some connection failures.
+Recording normally lives in `RecordOutgoingRequest` (see below), because a Guzzle middleware's `->then(onRejected)` only catches *rejected promises* and silently misses exceptions thrown synchronously inside the handler stack — e.g. some connection failures.
+
+The one case the events miss is when the caller enables Guzzle's `http_errors => true` (non-default): a `4xx`/`5xx` then becomes a rejected promise that Laravel marshals without dispatching `ResponseReceived`/`ConnectionFailed`. Because this middleware sits *inside* Guzzle's `http_errors` middleware, it still sees the fulfilled response and records it as a narrow fallback. It records nothing in the default `http_errors => false` mode (events handle everything) and never for `2xx` or rejected promises — so there is no double-recording.
 
 ### `Listeners/RecordOutgoingRequest`
 

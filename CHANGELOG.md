@@ -9,6 +9,11 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-11
+
+### Fixed
+- Outbound `4xx`/`5xx` responses are now recorded even when the caller opts into Guzzle's `http_errors => true` (non-default). In that mode Guzzle turns the response into a rejected promise that Laravel marshals without dispatching a client event, so the `ResponseReceived`/`ConnectionFailed` listeners introduced in 0.3.0 never saw it. `OutgoingTracingMiddleware` sits inside Guzzle's `http_errors` middleware, still observes the fulfilled response, and records it. The default `http_errors => false` mode is unchanged — events remain the sole recorder, and there is no double-recording (verified for `2xx`, `4xx`/`5xx`, and connection failures under both modes).
+
 ## [0.3.0] - 2026-06-11
 
 ### Fixed
@@ -20,7 +25,7 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 - `exception_class` for connection-level failures is now `Illuminate\Http\Client\ConnectionException` (previously the underlying Guzzle class such as `GuzzleHttp\Exception\ConnectException`). Anything querying or alerting on that column value should account for the new value.
 
 ### Notes
-- Edge case: if the host app explicitly opts into Guzzle's `http_errors => true` (not Laravel's default), a `4xx`/`5xx` becomes a rejected promise for which Laravel dispatches neither `ResponseReceived` nor `ConnectionFailed`, so that response is not recorded. With the default `http_errors => false` every response is captured.
+- Edge case: if the host app explicitly opts into Guzzle's `http_errors => true` (not Laravel's default), a `4xx`/`5xx` becomes a rejected promise for which Laravel dispatches neither `ResponseReceived` nor `ConnectionFailed`, so that response is not recorded. With the default `http_errors => false` every response is captured. *(Fixed in 0.3.1.)*
 
 ## [0.2.4] - 2026-06-11
 
@@ -85,7 +90,8 @@ Initial release.
 - Retention via `php artisan model:prune` (`tracing.retention_days`, default 30).
 - Cross-database SQL compatibility: PostgreSQL, MySQL, SQLite.
 
-[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/d076/laravel-tracing/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/d076/laravel-tracing/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/d076/laravel-tracing/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/d076/laravel-tracing/compare/v0.2.2...v0.2.3
