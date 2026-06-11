@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# All current Laravel 11 releases carry an unpatched advisory (PKSA-mdq4-51ck-6kdq),
+# which Composer 2.9+ refuses to resolve by default. We only test compatibility
+# against the framework here; patching it is the host app's responsibility.
+env:
+  COMPOSER_NO_SECURITY_BLOCKING: 1
+
 jobs:
   # ── Default suite (SQLite) ──────────────────────────────────────────────────
   tests:
