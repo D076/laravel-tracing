@@ -17,10 +17,12 @@ src/
 ├── Jobs/
 │   ├── PersistTracingRecord.php       # Queue job — inbound requests
 │   └── PersistOutgoingRecord.php      # Queue job — outbound requests
+├── Listeners/
+│   └── RecordOutgoingRequest.php      # Records outbound requests via Http client events
 ├── Middleware/
 │   ├── TraceIdMiddleware.php          # Generates X-Trace-Id, adds it to the response
 │   ├── TracingMiddleware.php          # Captures the inbound request/response
-│   └── OutgoingTracingMiddleware.php  # Guzzle middleware for the Http facade
+│   └── OutgoingTracingMiddleware.php  # Guzzle middleware — injects X-Trace-Id only
 ├── Models/
 │   ├── TracingRequest.php             # Inbound requests
 │   └── OutgoingRequest.php            # Outbound requests
@@ -79,11 +81,21 @@ Captures inbound request data into `TracingContext`. After the response is sent 
 
 ### `Middleware/OutgoingTracingMiddleware`
 
-Guzzle handler-stack middleware, registered via `Http::globalMiddleware()`. Wraps every call through the `Http` facade and captures URL, status, headers, bodies, and duration. Reads request/response bodies via a seekable stream with rewind — the original request stays intact.
+Guzzle handler-stack middleware, registered via `Http::globalMiddleware()`. Its **only** job is request mutation: when `propagate_trace_id=true`, it adds an `X-Trace-Id` header to outbound requests (useful for distributed tracing). Mutating the outgoing request is only possible at the middleware level — events cannot do it.
 
-Ties the record to the inbound request via `TraceId::get()` → the `trace_id` column. Works from controllers, jobs, and CLI.
+The middleware does **not** record anything. Recording lives in `RecordOutgoingRequest` (see below), because a Guzzle middleware's `->then(onRejected)` only catches *rejected promises* and silently misses exceptions thrown synchronously inside the handler stack — e.g. some connection failures.
 
-When `propagate_trace_id=true`, adds an `X-Trace-Id` header to outbound requests — useful for distributed tracing.
+### `Listeners/RecordOutgoingRequest`
+
+Records every outbound request by listening to the Laravel Http client events:
+
+- `RequestSending` — stamps the start time and `TraceId::get()`, keyed by the PSR request object id.
+- `ResponseReceived` — fires for **any** response (including 4xx/5xx); persists status, headers, bodies, and duration.
+- `ConnectionFailed` — fires when there is no response at all (timeout, DNS failure, connection refused); persists the exception with a null status.
+
+The framework guarantees one of `ResponseReceived` / `ConnectionFailed` fires for every request, so coverage no longer depends on Guzzle promise/handler-stack semantics. Duration is the delta between `RequestSending` and the terminal event, correlated by the PSR request object identity (stable across these events, even for concurrent `Http::pool()` requests).
+
+Ties the record to the inbound request via `TraceId::get()` → the `trace_id` column. Works from controllers, jobs, and CLI. The listener is a **singleton** — otherwise its in-flight start-time map would not survive between event dispatches.
 
 ### `Services/TracingService` / `OutgoingTracingService`
 
@@ -91,7 +103,7 @@ Build the payload, apply header and body masking (request and response), truncat
 
 ### `Providers/TracingServiceProvider`
 
-Registers singletons, wires up the config and migrations, prepends `TraceIdMiddleware` and `TracingMiddleware` to the global HTTP middleware stack, registers a `respondUsing` hook for exception capture, registers `OutgoingTracingMiddleware` via `Http::globalMiddleware()`, registers the `tracing-api` named rate limiter (unless the app has defined one), and boots the UI.
+Registers singletons, wires up the config and migrations, prepends `TraceIdMiddleware` and `TracingMiddleware` to the global HTTP middleware stack, registers a `respondUsing` hook for exception capture, registers `OutgoingTracingMiddleware` via `Http::globalMiddleware()` and the `RecordOutgoingRequest` listener on the Http client events, registers the `tracing-api` named rate limiter (unless the app has defined one), and boots the UI.
 
 ## Inbound request lifecycle
 
@@ -126,20 +138,23 @@ TracingMiddleware::terminate()
 ```
 Http::get('https://...')
   ↓
-OutgoingTracingMiddleware.__invoke()  ← outermost in the Guzzle HandlerStack
-  → reads trace_id via TraceId::get() (from Context, or generates one)
-  → records start = microtime(true)
-  → optionally adds X-Trace-Id to headers
+OutgoingTracingMiddleware.__invoke()  ← Guzzle HandlerStack
+  → if propagate_trace_id: adds X-Trace-Id header (request mutation only)
   ↓
-[ buildBeforeSendingHandler → buildRecorderHandler → buildStubHandler → transport ]
+RequestSending event
+  → RecordOutgoingRequest: stamps start = microtime(true) + TraceId::get(),
+    keyed by the PSR request object id
   ↓
-  ← .then(success):
-       reads the response body (rewinds afterwards)
-       body masking (JSON), truncation
+[ transport: real HTTP, or Http::fake stub ]
+  ↓
+  ← ResponseReceived event (any status, incl. 4xx/5xx):
+       reads request/response bodies (rewinds afterwards)
+       body masking (JSON / form), truncation
        OutgoingTracingService::persist()
        → INSERT into tracing_outgoing_requests
-  ← .then(failure / TransferException):
-       records exception_class, exception_message
-       if a RequestException carries a response — records response_status
+  ← ConnectionFailed event (no response: timeout / DNS / refused):
+       records exception_class, exception_message, null status
        OutgoingTracingService::persist()
 ```
+
+Both terminal events compute duration from the matching `RequestSending` stamp and tie the row to the inbound request via `trace_id`.

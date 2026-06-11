@@ -45,6 +45,20 @@ final class OutgoingTracingService
         OutgoingRequest::create($data);
     }
 
+    /**
+     * Запрос к этому URL не трейсится (config tracing.outgoing.ignore_urls).
+     */
+    public function isIgnored(string $url): bool
+    {
+        foreach (config('tracing.outgoing.ignore_urls', []) as $pattern) {
+            if (fnmatch($pattern, $url)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @return array<string, mixed> */
     private function buildPayload(
         string $traceId,

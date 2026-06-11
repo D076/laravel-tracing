@@ -9,8 +9,18 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-11
+
 ### Fixed
+- Outbound requests that fail **without a response** — connection refused, DNS failure, read/connect timeout — are now recorded in `tracing_outgoing_requests`. Previously the Guzzle middleware attached its recording via a promise `->then(onRejected)` callback, which only observes *rejected* promises and silently missed exceptions thrown synchronously inside the handler stack, so these failures were never logged. Ordinary `4xx`/`5xx` responses were unaffected and are still recorded.
 - Octane: inbound `duration_ms` is now measured from a per-request timestamp instead of the process-global `LARAVEL_START` constant. Under a long-lived Octane worker the constant is immutable and kept the first request's start time, so every later request reported an inflated duration. Timing under PHP-FPM is unaffected.
+
+### Changed
+- Outbound request **recording** moved from the `Http` facade global Guzzle middleware to the HTTP client events `ResponseReceived` and `ConnectionFailed`. The framework guarantees one of these fires for every request (any status, plus connection failures), so coverage no longer depends on Guzzle promise/handler-stack semantics. `OutgoingTracingMiddleware` is retained solely to inject the `X-Trace-Id` header when `outgoing.propagate_trace_id` is enabled — request mutation is only possible at the middleware level, not from an event.
+- `exception_class` for connection-level failures is now `Illuminate\Http\Client\ConnectionException` (previously the underlying Guzzle class such as `GuzzleHttp\Exception\ConnectException`). Anything querying or alerting on that column value should account for the new value.
+
+### Notes
+- Edge case: if the host app explicitly opts into Guzzle's `http_errors => true` (not Laravel's default), a `4xx`/`5xx` becomes a rejected promise for which Laravel dispatches neither `ResponseReceived` nor `ConnectionFailed`, so that response is not recorded. With the default `http_errors => false` every response is captured.
 
 ## [0.2.4] - 2026-06-11
 
@@ -75,7 +85,8 @@ Initial release.
 - Retention via `php artisan model:prune` (`tracing.retention_days`, default 30).
 - Cross-database SQL compatibility: PostgreSQL, MySQL, SQLite.
 
-[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/d076/laravel-tracing/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/d076/laravel-tracing/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/d076/laravel-tracing/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/d076/laravel-tracing/compare/v0.2.1...v0.2.2

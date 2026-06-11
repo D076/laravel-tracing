@@ -5,15 +5,20 @@ namespace D076\Tracing\Providers;
 use D076\Tracing\Context\TracingContext;
 use D076\Tracing\Context\TraceId;
 use D076\Tracing\Http\Middleware\TracingAuthMiddleware;
+use D076\Tracing\Listeners\RecordOutgoingRequest;
 use D076\Tracing\Middleware\TracingMiddleware;
 use D076\Tracing\Middleware\OutgoingTracingMiddleware;
 use D076\Tracing\Middleware\TraceIdMiddleware;
+use Illuminate\Http\Client\Events\ConnectionFailed;
+use Illuminate\Http\Client\Events\RequestSending;
+use Illuminate\Http\Client\Events\ResponseReceived;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
@@ -30,6 +35,10 @@ final class TracingServiceProvider extends ServiceProvider
 
         $this->app->singleton(TraceId::class);
         $this->app->singleton(TracingContext::class);
+
+        // Singleton обязателен: слушатель хранит время старта запроса между
+        // событиями RequestSending → ResponseReceived/ConnectionFailed.
+        $this->app->singleton(RecordOutgoingRequest::class);
 
         // respondUsing вызывается из finalizeRenderedResponse() для ВСЕХ исключений,
         // включая HttpException (404, 403, 429), которые reportable() пропускает
@@ -79,7 +88,13 @@ final class TracingServiceProvider extends ServiceProvider
         ))]);
 
         if (config('tracing.outgoing.enabled', true)) {
+            // Middleware — только инъекция X-Trace-Id (мутация запроса).
             Http::globalMiddleware($this->app->make(OutgoingTracingMiddleware::class));
+
+            // Запись — на событиях клиента: гарантированно ловят 4xx/5xx и обрыв коннекта.
+            Event::listen(RequestSending::class, [RecordOutgoingRequest::class, 'handleRequestSending']);
+            Event::listen(ResponseReceived::class, [RecordOutgoingRequest::class, 'handleResponseReceived']);
+            Event::listen(ConnectionFailed::class, [RecordOutgoingRequest::class, 'handleConnectionFailed']);
         }
 
         if (config('tracing.ui.enabled', true)) {

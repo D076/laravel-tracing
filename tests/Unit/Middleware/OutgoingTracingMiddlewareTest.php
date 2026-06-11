@@ -1,6 +1,7 @@
 <?php
 
 use D076\Tracing\Middleware\OutgoingTracingMiddleware;
+use D076\Tracing\Services\OutgoingTracingService;
 use GuzzleHttp\Promise\FulfilledPromise;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
@@ -25,11 +26,9 @@ function captureOutgoingRequest(RequestInterface $request): RequestInterface
     return $captured;
 }
 
-describe('OutgoingTracingMiddleware::isIgnored', function () {
+describe('OutgoingTracingService::isIgnored', function () {
     beforeEach(function () {
-        $this->middleware = app(OutgoingTracingMiddleware::class);
-        $this->isIgnored = fn (RequestInterface $req): bool => (new ReflectionMethod($this->middleware, 'isIgnored'))
-            ->invoke($this->middleware, $req);
+        $this->isIgnored = fn (string $url): bool => app(OutgoingTracingService::class)->isIgnored($url);
 
         config()->set('tracing.outgoing.ignore_urls', [
             '*://metrics.internal/*',
@@ -38,15 +37,15 @@ describe('OutgoingTracingMiddleware::isIgnored', function () {
     });
 
     it('ignores a url matching a wildcard pattern', function () {
-        expect(($this->isIgnored)(new Request('GET', 'https://metrics.internal/push')))->toBeTrue();
+        expect(($this->isIgnored)('https://metrics.internal/push'))->toBeTrue();
     });
 
     it('ignores a url matching an exact pattern', function () {
-        expect(($this->isIgnored)(new Request('GET', 'https://foo.test/health')))->toBeTrue();
+        expect(($this->isIgnored)('https://foo.test/health'))->toBeTrue();
     });
 
     it('does not ignore a non-matching url', function () {
-        expect(($this->isIgnored)(new Request('GET', 'https://api.example.com/users')))->toBeFalse();
+        expect(($this->isIgnored)('https://api.example.com/users'))->toBeFalse();
     });
 });
 
