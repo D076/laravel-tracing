@@ -39,6 +39,8 @@ final class TracingContext
 
     public ?string    $authenticatableType = null;
 
+    public ?float     $startedAt = null;
+
     public ?int       $durationMs = null;
 
     public bool       $shouldRecord = true;
@@ -58,6 +60,7 @@ final class TracingContext
         $this->exception = null;
         $this->authenticatableId = null;
         $this->authenticatableType = null;
+        $this->startedAt = null;
         $this->durationMs = null;
         $this->shouldRecord = true;
     }

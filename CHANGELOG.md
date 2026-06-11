@@ -9,6 +9,9 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
+### Fixed
+- Octane: inbound `duration_ms` is now measured from a per-request timestamp instead of the process-global `LARAVEL_START` constant. Under a long-lived Octane worker the constant is immutable and kept the first request's start time, so every later request reported an inflated duration. Timing under PHP-FPM is unaffected.
+
 ## [0.2.4] - 2026-06-11
 
 ### Added

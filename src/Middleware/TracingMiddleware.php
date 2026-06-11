@@ -20,11 +20,9 @@ final class TracingMiddleware
 
     public function handle(Request $request, Closure $next): Response
     {
-        if (!defined('LARAVEL_START')) {
-            define('LARAVEL_START', microtime(true));
-        }
-
         $this->context->reset();
+
+        $this->context->startedAt = microtime(true);
 
         if (!config('tracing.enabled', true) || $this->isExcluded($request)) {
             $this->context->shouldRecord = false;
@@ -63,7 +61,7 @@ final class TracingMiddleware
         }
 
         $this->context->durationMs = (int) round(
-            (microtime(true) - LARAVEL_START) * 1000
+            (microtime(true) - ($this->context->startedAt ?? microtime(true))) * 1000
         );
 
         $this->service->persist($this->context, $response);

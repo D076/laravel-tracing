@@ -14,6 +14,7 @@ it('reset() clears every public property back to its default', function () {
         $prop->setValue($ctx, match ($typeName) {
             'bool'      => false,
             'int'       => 999,
+            'float'     => 999.0,
             'array'     => ['dirty'],
             'Throwable' => new Exception('dirty'),
             default     => 'dirty',
