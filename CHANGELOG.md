@@ -9,6 +9,12 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-06-11
+
+### Added
+- Web UI: list filters, sorting, and pagination are now persisted in the URL query string. They survive navigation to a detail view and back (browser **Back**), and a filtered list can be bookmarked or shared via its URL.
+- Web UI: detail views can be opened in a new tab — Cmd/Ctrl/Shift + click or middle-click on a table row, or the **↗** link that appears on row hover.
+
 ## [0.2.3] - 2026-05-28
 
 ### Changed
@@ -66,7 +72,8 @@ Initial release.
 - Retention via `php artisan model:prune` (`tracing.retention_days`, default 30).
 - Cross-database SQL compatibility: PostgreSQL, MySQL, SQLite.
 
-[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/d076/laravel-tracing/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/d076/laravel-tracing/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/d076/laravel-tracing/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/d076/laravel-tracing/compare/v0.2.0...v0.2.1

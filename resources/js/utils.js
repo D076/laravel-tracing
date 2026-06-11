@@ -23,3 +23,9 @@ export function timeAgo(iso) {
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
     return formatTime(iso)
 }
+
+// Returns true when a row click should open in a new tab instead of navigating
+// in place: Cmd/Ctrl/Shift + left click, or a middle click (auxclick button 1).
+export function wantsNewTab(e) {
+    return e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1
+}

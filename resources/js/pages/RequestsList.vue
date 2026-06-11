@@ -1,29 +1,34 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { fetchRequests } from '../api.js'
 import StatusBadge from '../components/StatusBadge.vue'
 import MethodBadge from '../components/MethodBadge.vue'
-import { formatDuration, durationClass, timeAgo, formatTime } from '../utils.js'
+import { formatDuration, durationClass, timeAgo, formatTime, wantsNewTab } from '../utils.js'
 
 const router = useRouter()
+const route = useRoute()
+
+// Filters/sort/pagination are seeded from the URL query so they survive
+// navigation to a detail page and back, and can be shared or opened in a new tab.
+const q = route.query
 
 const requests = ref([])
 const meta = ref({ current_page: 1, last_page: 1, per_page: 50, total: 0 })
 const loading = ref(false)
 const error = ref(null)
-const page = ref(1)
-const sort = ref('created_at')
-const direction = ref('desc')
+const page = ref(Number(q.page) || 1)
+const sort = ref(q.sort ?? 'created_at')
+const direction = ref(q.direction ?? 'desc')
 
 const filters = reactive({
-    status_group: [],
-    method: '',
-    route_path: '',
-    date_from: '',
-    date_to: '',
-    has_exception: false,
-    search: '',
+    status_group: q.status_group ? String(q.status_group).split(',') : [],
+    method: q.method ?? '',
+    route_path: q.route_path ?? '',
+    date_from: q.date_from ?? '',
+    date_to: q.date_to ?? '',
+    has_exception: q.has_exception === '1',
+    search: q.search ?? '',
 })
 
 const STATUS_GROUPS = ['2xx', '3xx', '4xx', '5xx']
@@ -39,7 +44,29 @@ const hasActiveFilters = computed(() =>
     filters.search,
 )
 
+function buildQuery() {
+    const query = {}
+    if (filters.status_group.length) query.status_group = filters.status_group.join(',')
+    if (filters.method) query.method = filters.method
+    if (filters.route_path) query.route_path = filters.route_path
+    if (filters.date_from) query.date_from = filters.date_from
+    if (filters.date_to) query.date_to = filters.date_to
+    if (filters.has_exception) query.has_exception = '1'
+    if (filters.search) query.search = filters.search
+    if (sort.value !== 'created_at') query.sort = sort.value
+    if (direction.value !== 'desc') query.direction = direction.value
+    if (page.value > 1) query.page = String(page.value)
+    return query
+}
+
+// Mirror current filter/sort/page state into the URL (replace, so typing
+// doesn't flood history). Returning from a detail view restores this URL.
+function syncQuery() {
+    router.replace({ query: buildQuery() })
+}
+
 async function load() {
+    syncQuery()
     loading.value = true
     error.value = null
     try {
@@ -61,6 +88,21 @@ async function load() {
         error.value = e.message
     } finally {
         loading.value = false
+    }
+}
+
+// Open in place on a plain click; in a new tab on modifier/middle click so the
+// table rows behave like real links.
+function openRow(r, e) {
+    // auxclick fires for middle (1) and right (2) buttons; only middle navigates,
+    // so a right click can still open the context menu.
+    if (e.type === 'auxclick' && e.button !== 1) return
+    const to = '/' + r.id
+    if (wantsNewTab(e)) {
+        e.preventDefault()
+        window.open(router.resolve(to).href, '_blank', 'noopener')
+    } else {
+        router.push(to)
     }
 }
 
@@ -213,8 +255,9 @@ onMounted(load)
                 <tr
                     v-for="r in requests"
                     :key="r.id"
-                    @click="router.push('/' + r.id)"
-                    class="hover:bg-gray-50 cursor-pointer transition-colors"
+                    @click="openRow(r, $event)"
+                    @auxclick="openRow(r, $event)"
+                    class="group hover:bg-gray-50 cursor-pointer transition-colors"
                 >
                     <td class="px-4 py-3"><MethodBadge :method="r.method" /></td>
                     <td class="px-4 py-3">
@@ -234,7 +277,17 @@ onMounted(load)
                     </td>
                     <td class="px-4 py-3 text-xs text-gray-500 font-mono">{{ r.ip_address ?? '—' }}</td>
                     <td class="px-4 py-3 text-xs text-gray-400" :title="formatTime(r.created_at)">
-                        {{ timeAgo(r.created_at) }}
+                        <div class="flex items-center justify-between gap-2">
+                            <span>{{ timeAgo(r.created_at) }}</span>
+                            <RouterLink
+                                :to="'/' + r.id"
+                                target="_blank"
+                                @click.stop
+                                @auxclick.stop
+                                class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-700 transition-opacity"
+                                title="Open in new tab"
+                            >↗</RouterLink>
+                        </div>
                     </td>
                 </tr>
             </tbody>
