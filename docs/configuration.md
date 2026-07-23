@@ -14,7 +14,7 @@ php artisan vendor:publish --tag=tracing-config
 | `TRACING_DRIVER` | `database` | `database` (sync) or `queue` (async) |
 | `TRACING_QUEUE` | `null` | Queue name for async mode |
 | `TRACING_QUEUE_CONNECTION` | `null` | Queue connection |
-| `TRACING_MAX_BODY_SIZE` | `10000` | Max body size in characters |
+| `TRACING_MAX_BODY_SIZE` | `10000` | Max body size in bytes (truncation respects UTF-8 character boundaries) |
 | `TRACING_STORE_RESPONSE_BODY` | `true` | Store the response body |
 | `TRACING_STORE_RESPONSE_BODY_ONLY_JSON` | `true` | Store the response body only if it is JSON |
 | `TRACING_DB_CONNECTION` | `null` | DB connection (null = default) |
@@ -30,7 +30,7 @@ php artisan vendor:publish --tag=tracing-config
 | `TRACING_OUTGOING_QUEUE_CONNECTION` | `null` | Queue connection |
 | `TRACING_OUTGOING_STORE_REQUEST_BODY` | `true` | Store the request body |
 | `TRACING_OUTGOING_STORE_RESPONSE_BODY` | `true` | Store the response body |
-| `TRACING_OUTGOING_MAX_BODY_SIZE` | `10000` | Max body size in characters |
+| `TRACING_OUTGOING_MAX_BODY_SIZE` | `10000` | Max body size in bytes (truncation respects UTF-8 character boundaries) |
 | `TRACING_OUTGOING_PROPAGATE_TRACE_ID` | `false` | Add `X-Trace-Id` to outbound headers |
 | `TRACING_OUTGOING_RETENTION_DAYS` | `30` | Retention in days (0 = never delete) |
 
@@ -152,6 +152,8 @@ Sensitive values are replaced with `[REDACTED]` before being written to the data
 > **Note:** `password` masks only the top level. For a nested field, give the full path: `user.password`. For routes with sensitive bodies (e.g. `POST /login`), you can also add the route to `ignore_paths`.
 
 > **Form-encoded outbound bodies.** For `application/x-www-form-urlencoded` outbound bodies, masking is dispatched by `Content-Type` and the body is round-tripped through `parse_str` / `http_build_query`. Nested fields follow PHP's bracket syntax (`user[password]=...`) and are addressed via dot notation (`user.password`) in the masked-keys list. Bodies sent without an explicit `Content-Type` are treated as JSON for backward compatibility; bodies with unknown content types are not parsed and pass through unchanged (only truncated).
+
+> **Character encoding.** Bodies and JSON columns are normalized to UTF-8 before storage, so a strict backend (PostgreSQL with a UTF8 database) never rejects the `INSERT` over a stray byte. A body in a legacy charset declared via `Content-Type` (e.g. `charset=windows-1251`) is transcoded to UTF-8; an undeclared legacy charset is detected best-effort; a body that is neither valid UTF-8 nor decodable is replaced with a `[non-UTF-8 body, N bytes]` marker. Truncation uses `mb_strcut`, so it never splits a multi-byte character. For JSON columns (`body_params`, `query_params`, headers) a non-UTF-8 byte is substituted with U+FFFD rather than dropping the whole record.
 
 ## Async mode (queue)
 

@@ -4,6 +4,7 @@ namespace D076\Tracing\Services;
 
 use D076\Tracing\Jobs\PersistOutgoingRecord;
 use D076\Tracing\Models\OutgoingRequest;
+use D076\Tracing\Support\BodyEncoding;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -21,7 +22,9 @@ final class OutgoingTracingService
         int $durationMs,
     ): void {
         try {
-            $data = $this->buildPayload($traceId, $request, $response, $exception, $durationMs);
+            $data = BodyEncoding::cleanForStorage(
+                $this->buildPayload($traceId, $request, $response, $exception, $durationMs)
+            );
 
             if (config('tracing.outgoing.driver') === 'queue') {
                 PersistOutgoingRecord::dispatch($data)
@@ -111,6 +114,10 @@ final class OutgoingTracingService
             return null;
         }
 
+        // Normalize legacy charsets to UTF-8 before masking/truncation — otherwise
+        // json_decode/parse_str fail and a strict backend rejects the raw bytes.
+        $body = BodyEncoding::toUtf8($body, $contentType);
+
         if ($contentType !== null && str_contains(strtolower($contentType), 'application/x-www-form-urlencoded')) {
             return $this->maskFormBody($body, $maskedKeys);
         }
@@ -140,7 +147,7 @@ final class OutgoingTracingService
         $max = (int) config('tracing.outgoing.max_body_size', 10000);
 
         return strlen($body) > $max
-            ? substr($body, 0, $max) . '...[truncated]'
+            ? mb_strcut($body, 0, $max, 'UTF-8') . '...[truncated]'
             : $body;
     }
 
@@ -169,7 +176,7 @@ final class OutgoingTracingService
         $max = (int) config('tracing.outgoing.max_body_size', 10000);
 
         return strlen($body) > $max
-            ? substr($body, 0, $max) . '...[truncated]'
+            ? mb_strcut($body, 0, $max, 'UTF-8') . '...[truncated]'
             : $body;
     }
 
@@ -203,7 +210,7 @@ final class OutgoingTracingService
             $max = (int) config('tracing.outgoing.max_body_size', 10000);
 
             return strlen($content) > $max
-                ? substr($content, 0, $max) . '...[truncated]'
+                ? mb_strcut($content, 0, $max, 'UTF-8') . '...[truncated]'
                 : $content;
         } catch (Throwable) {
             return null;

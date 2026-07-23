@@ -9,6 +9,13 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-23
+
+### Fixed
+- Non-UTF-8 response/request bodies no longer break persistence on a strict backend. Bodies are now normalized to UTF-8 before masking and truncation via the new `Support\BodyEncoding` helper: a body in a legacy charset declared in `Content-Type` (e.g. `windows-1251`) is transcoded, an undeclared legacy charset is detected best-effort, and a body that is neither valid UTF-8 nor decodable is stored as a `[non-UTF-8 body, N bytes]` marker. Previously such a body was written verbatim and a PostgreSQL UTF8 database aborted the whole `INSERT` with `invalid byte sequence for encoding "UTF8"`, so the record was lost (`Tracing: failed to persist ...`). SQLite/MySQL stored the raw bytes silently and were unaffected.
+- Body truncation no longer splits a multi-byte UTF-8 character. `substr()` cut on a byte boundary and could leave a dangling lead byte (e.g. a Cyrillic body truncated mid-character), which a strict backend then rejected. Truncation now uses `mb_strcut`, keeping the byte budget while respecting character boundaries.
+- Incoming records are no longer dropped when a JSON column (`body_params`, `query_params`, request/response headers) contains a non-UTF-8 byte. Eloquent's `array` cast `json_encode`d such a value to `false` and threw `JsonEncodingException`, which `persist()` swallowed — losing the record on **any** driver. Payloads now pass through `BodyEncoding::cleanForStorage()`, substituting invalid bytes with U+FFFD before the write.
+
 ## [0.3.1] - 2026-06-11
 
 ### Fixed
@@ -90,7 +97,8 @@ Initial release.
 - Retention via `php artisan model:prune` (`tracing.retention_days`, default 30).
 - Cross-database SQL compatibility: PostgreSQL, MySQL, SQLite.
 
-[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/d076/laravel-tracing/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/d076/laravel-tracing/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/d076/laravel-tracing/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/d076/laravel-tracing/compare/v0.2.3...v0.2.4

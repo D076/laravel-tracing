@@ -55,6 +55,20 @@ describe('OutgoingTracingService::maskJsonBody', function () {
             ->and($result)->toBe(substr($body, 0, 10) . '...[truncated]');
     });
 
+    it('does not split a multibyte UTF-8 character when truncating', function () {
+        // Reproduces the pgsql "invalid byte sequence for encoding UTF8: 0xd0 ..." crash:
+        // truncation must never leave a dangling lead byte of a multibyte character.
+        // "Москва" — each Cyrillic letter is 2 bytes. Cutting at an odd offset splits one.
+        config()->set('tracing.outgoing.max_body_size', 15);
+
+        $body = json_encode(['city' => str_repeat('Москва', 50)], JSON_UNESCAPED_UNICODE);
+
+        $result = invokeMaskJsonBody($this->service, $body, []);
+
+        expect($result)->toEndWith('...[truncated]')
+            ->and(mb_check_encoding($result, 'UTF-8'))->toBeTrue();
+    });
+
     it('returns null when the body is null', function () {
         expect(invokeMaskJsonBody($this->service, null, ['password']))->toBeNull();
     });

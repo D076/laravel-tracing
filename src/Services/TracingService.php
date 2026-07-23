@@ -5,6 +5,7 @@ namespace D076\Tracing\Services;
 use D076\Tracing\Context\TracingContext;
 use D076\Tracing\Jobs\PersistTracingRecord;
 use D076\Tracing\Models\TracingRequest;
+use D076\Tracing\Support\BodyEncoding;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,7 +16,7 @@ final class TracingService
     public function persist(TracingContext $ctx, Response $response): void
     {
         try {
-            $data = $this->buildPayload($ctx, $response);
+            $data = BodyEncoding::cleanForStorage($this->buildPayload($ctx, $response));
 
             if (config('tracing.driver') === 'queue') {
                 PersistTracingRecord::dispatch($data)
@@ -65,7 +66,7 @@ final class TracingService
         if (config('tracing.store_response_body', false) && !($response instanceof StreamedResponse)) {
             $content = $response->getContent();
             if ($content !== false && $content !== '') {
-                $responseBody = $this->maskResponseBody($content);
+                $responseBody = $this->maskResponseBody($content, $response->headers->get('Content-Type'));
             }
         }
 
@@ -130,7 +131,9 @@ final class TracingService
             return null;
         }
 
-        $json = json_encode($data, JSON_THROW_ON_ERROR);
+        // JSON_INVALID_UTF8_SUBSTITUTE: a legacy-encoded body param must not throw
+        // here and drop the whole record — cleanForStorage() substitutes it later.
+        $json = json_encode($data, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
         $maxSize = config('tracing.max_body_size', 10000);
 
         if (strlen($json) > $maxSize) {
@@ -140,8 +143,11 @@ final class TracingService
         return $data;
     }
 
-    private function maskResponseBody(string $content): ?string
+    private function maskResponseBody(string $content, ?string $contentType = null): ?string
     {
+        // Normalize legacy charsets to UTF-8 before JSON parsing/truncation.
+        $content = BodyEncoding::toUtf8($content, $contentType);
+
         if (json_validate($content)) {
             $decoded = json_decode($content, true);
 
@@ -166,7 +172,7 @@ final class TracingService
         $maxSize = config('tracing.max_body_size', 10000);
 
         if (strlen($content) > $maxSize) {
-            return substr($content, 0, $maxSize) . '...[truncated]';
+            return mb_strcut($content, 0, $maxSize, 'UTF-8') . '...[truncated]';
         }
 
         return $content;
