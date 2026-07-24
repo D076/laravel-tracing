@@ -222,7 +222,7 @@ Tags are reset at the start of every inbound request (alongside `trace_id`), so 
 
 | Parameter | Matching | Notes |
 |-----------|----------|-------|
-| `?tag=team:billing` | exact | Repeat or comma-separate for AND: `?tag=a,b` or `?tag[]=a&tag[]=b`. Uses the index on PostgreSQL. |
+| `?tag=team:billing` | exact | Repeat or comma-separate for AND: `?tag=a,b` or `?tag[]=a&tag[]=b`. Uses the index on PostgreSQL. **Comma is reserved** by this syntax — a tag containing one can only be matched via the `?tag[]=` form. |
 | `?search=billing` | substring | The standard search box — also matches URL and headers. |
 
 Both parameters work on `/{ui.path}/api/requests` and `/{ui.path}/api/outgoing`. In the web UI, tags render as chips on list rows and detail pages; clicking a chip applies the exact-tag filter, and typing in the search box matches tags by substring.
@@ -230,6 +230,47 @@ Both parameters work on `/{ui.path}/api/requests` and `/{ui.path}/api/outgoing`.
 ### Storage
 
 Tags are stored in a nullable `tags` JSON column on both tables, added by an additive migration. On PostgreSQL the migration also creates a **GIN index** on each `tags` column, so exact-tag filtering stays fast at scale (a plain btree index cannot serve JSON containment). Without tags, behaviour and storage are unchanged.
+
+## Search
+
+The UI has two search inputs, backed by two API parameters. They are separate on purpose: one is cheap enough to run on every keystroke, the other scans captured payloads and is deliberately opt-in.
+
+| Parameter | Input | Covers |
+|-----------|-------|--------|
+| `?search=` | main box, live as you type | Trace ID / record id (exact, when the term is a UUID), URL, request **and** response headers, tags |
+| `?payload=` | **Deep search** box, runs on Enter | everything `search` covers **plus** request/response bodies, query parameters, and the recorded exception |
+
+Both work on `/{ui.path}/api/requests` and `/{ui.path}/api/outgoing`, are case-insensitive substring matches, and combine with every other filter (method, status, date range, tag) using AND. `payload` is a strict superset of `search`, so the natural workflow is: try the main box, and if it finds nothing, repeat the term in Deep search.
+
+```
+GET /tracing/api/requests?payload=%2B79023396677&date_from=2026-07-01
+```
+
+Percent-encode the term. A raw `+` in a query string decodes to a space — the UI handles this for you, but hand-written URLs must use `%2B`.
+
+### Case-insensitivity and non-ASCII terms
+
+Matching is case-insensitive, and that holds for non-ASCII text (Cyrillic, accented Latin, …) on **PostgreSQL and MySQL** — searching `Москва`, `москва`, or `МОСКВА` returns the same rows.
+
+On **SQLite** it does not: SQLite's `lower()` only folds ASCII unless built with ICU, so a non-ASCII term matches only in the exact case it was stored. SQLite is supported for development and the test suite; this limitation does not affect a PostgreSQL or MySQL deployment. (SQLite also stores JSON with `\uXXXX` escapes, so non-ASCII values inside JSON columns are not substring-matchable there at all.)
+
+### Why Deep search is separate
+
+`LIKE '%term%'` cannot use a btree index, so `payload` performs a sequential scan over the payload columns. On a package designed to capture **100 %** of traffic, those columns are the bulk of the data, and an unbounded deep search on a large table is slow and competes with the ongoing insert load. Keeping it behind its own input means the cost is only paid when someone deliberately asks for it.
+
+**The most effective way to speed it up is to narrow the date range** — `created_at` is indexed, so bounding the window bounds the scan.
+
+### What Deep search cannot find
+
+Some values are genuinely absent from storage; this is not a search bug:
+
+- **Truncated payloads.** Bodies larger than `max_body_size` (default `10000`) are cut and marked `...[truncated]`; anything past the cut is unsearchable. An oversized `body_params` is replaced wholesale with `{"_truncated": true, "_original_size": N}`.
+- **Skipped response bodies.** With `store_response_body_only_json=true` (the default) a non-JSON response body is never stored.
+- **Masked values.** Fields listed in `masked_body_params` / `masked_request_headers` / `masked_response_body_params` are stored as `[REDACTED]`. Adding, say, `phone` to a masked list makes that value permanently unsearchable — by design.
+
+### Privacy
+
+Deep search turns the UI into a full-text grep over every captured payload, which at 100 % capture means all PII flowing through your application. It exposes nothing that a detail page does not already show, so it is governed by the same `viewTracing` gate — but it makes that data far easier to mine in bulk. Keep the gate tight in production (see [UI authorization](#ui-authorization)).
 
 ## Separate database for tracing
 

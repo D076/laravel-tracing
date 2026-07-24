@@ -15,6 +15,8 @@ async function get(url) {
 }
 
 export function fetchRequests(params = {}) {
+    // URLSearchParams percent-encodes properly, so values like "+79023396677"
+    // survive intact instead of decoding to a space on the server.
     const entries = Object.entries(params).filter(
         ([, v]) => v !== '' && v !== null && v !== undefined && v !== false,
     )
@@ -27,6 +29,8 @@ export function fetchRequest(id) {
 }
 
 export function fetchOutgoing(params = {}) {
+    // URLSearchParams percent-encodes properly, so values like "+79023396677"
+    // survive intact instead of decoding to a space on the server.
     const entries = Object.entries(params).filter(
         ([, v]) => v !== '' && v !== null && v !== undefined && v !== false,
     )

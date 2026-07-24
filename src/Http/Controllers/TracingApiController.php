@@ -16,8 +16,8 @@ final class TracingApiController extends Controller
         $query = TracingRequest::query();
 
         if ($raw = $request->query('status_group')) {
-            $groups = is_array($raw) ? $raw : explode(',', $raw);
-            $groups = array_filter($groups);
+            $groups = is_array($raw) ? $raw : explode(',', (string) $raw);
+            $groups = array_filter($groups, 'is_string');
             if ($groups) {
                 $query->where(function ($q) use ($groups): void {
                     foreach ($groups as $group) {
@@ -33,19 +33,19 @@ final class TracingApiController extends Controller
             }
         }
 
-        if ($method = $request->query('method')) {
+        if (($method = $this->stringQuery($request, 'method')) !== null) {
             $query->where('method', strtoupper($method));
         }
 
-        if ($routePath = $request->query('route_path')) {
-            $query->whereRaw('lower(route_path) like ?', ['%' . strtolower($routePath) . '%']);
+        if (($routePath = $this->stringQuery($request, 'route_path')) !== null) {
+            $query->whereRaw('lower(route_path) like ?', ['%' . mb_strtolower($routePath, 'UTF-8') . '%']);
         }
 
-        if ($dateFrom = $request->query('date_from')) {
+        if (($dateFrom = $this->stringQuery($request, 'date_from')) !== null) {
             $query->where('created_at', '>=', $dateFrom);
         }
 
-        if ($dateTo = $request->query('date_to')) {
+        if (($dateTo = $this->stringQuery($request, 'date_to')) !== null) {
             $query->where('created_at', '<=', $dateTo . ' 23:59:59');
         }
 
@@ -55,23 +55,26 @@ final class TracingApiController extends Controller
 
         $this->applyTagFilter($query, $request);
 
-        if ($search = $request->query('search')) {
-            $isUuid = Str::isUuid($search);
-            /** @var \Illuminate\Database\Connection $conn */
-            $conn = $query->getConnection();
-            $jsonCast = $conn->getDriverName() === 'pgsql'
-                ? 'request_headers::text'
-                : 'CAST(request_headers AS CHAR)';
-            $tagsCast = $this->tagsTextExpression($conn->getDriverName());
-            $query->where(function ($q) use ($search, $isUuid, $jsonCast, $tagsCast): void {
-                if ($isUuid) {
-                    $q->where('id', $search);
-                }
-                $term = strtolower($search);
-                $q->orWhereRaw('lower(url) like ?', ['%' . $term . '%'])
-                    ->orWhereRaw("lower({$jsonCast}) like ?", ['%' . $term . '%'])
-                    ->orWhereRaw("lower({$tagsCast}) like ?", ['%' . $term . '%']);
-            });
+        if (($search = $this->stringQuery($request, 'search')) !== null) {
+            $this->applySearch(
+                $query,
+                $search,
+                textColumns: ['url'],
+                jsonColumns: ['request_headers', 'response_headers', 'tags'],
+                uuidColumns: ['id'],
+            );
+        }
+
+        // Глубокий поиск — отдельный параметр, потому что сканирует тела и является
+        // заведомо дорогим. Надмножество обычного search: «не нашлось обычным — ищу глубже».
+        if (($payload = $this->stringQuery($request, 'payload')) !== null) {
+            $this->applySearch(
+                $query,
+                $payload,
+                textColumns: ['url', 'response_body'],
+                jsonColumns: ['request_headers', 'response_headers', 'query_params', 'body_params', 'exception', 'tags'],
+                uuidColumns: ['id'],
+            );
         }
 
         $sortable = ['created_at', 'duration_ms', 'response_status'];
@@ -144,12 +147,12 @@ final class TracingApiController extends Controller
     {
         $query = OutgoingRequest::query();
 
-        if ($traceId = $request->query('trace_id')) {
+        if (($traceId = $this->stringQuery($request, 'trace_id')) !== null) {
             $query->where('trace_id', $traceId);
         }
 
         if ($raw = $request->query('status_group')) {
-            $groups = array_filter(is_array($raw) ? $raw : explode(',', $raw));
+            $groups = array_filter(is_array($raw) ? $raw : explode(',', (string) $raw), 'is_string');
             if ($groups) {
                 $query->where(function ($q) use ($groups): void {
                     foreach ($groups as $group) {
@@ -165,15 +168,15 @@ final class TracingApiController extends Controller
             }
         }
 
-        if ($method = $request->query('method')) {
+        if (($method = $this->stringQuery($request, 'method')) !== null) {
             $query->where('method', strtoupper($method));
         }
 
-        if ($dateFrom = $request->query('date_from')) {
+        if (($dateFrom = $this->stringQuery($request, 'date_from')) !== null) {
             $query->where('created_at', '>=', $dateFrom);
         }
 
-        if ($dateTo = $request->query('date_to')) {
+        if (($dateTo = $this->stringQuery($request, 'date_to')) !== null) {
             $query->where('created_at', '<=', $dateTo . ' 23:59:59');
         }
 
@@ -183,19 +186,25 @@ final class TracingApiController extends Controller
 
         $this->applyTagFilter($query, $request);
 
-        if ($search = $request->query('search')) {
-            $isUuid = Str::isUuid($search);
-            /** @var \Illuminate\Database\Connection $conn */
-            $conn = $query->getConnection();
-            $tagsCast = $this->tagsTextExpression($conn->getDriverName());
-            $query->where(function ($q) use ($search, $isUuid, $tagsCast): void {
-                if ($isUuid) {
-                    $q->where('id', $search)->orWhere('trace_id', $search);
-                }
-                $term = strtolower($search);
-                $q->orWhereRaw('lower(url) like ?', ['%' . $term . '%'])
-                    ->orWhereRaw("lower({$tagsCast}) like ?", ['%' . $term . '%']);
-            });
+        if (($search = $this->stringQuery($request, 'search')) !== null) {
+            $this->applySearch(
+                $query,
+                $search,
+                textColumns: ['url'],
+                jsonColumns: ['request_headers', 'response_headers', 'tags'],
+                uuidColumns: ['id', 'trace_id'],
+            );
+        }
+
+        // См. комментарий в index(): дорогой скан вынесен в отдельный параметр.
+        if (($payload = $this->stringQuery($request, 'payload')) !== null) {
+            $this->applySearch(
+                $query,
+                $payload,
+                textColumns: ['url', 'request_body', 'response_body', 'exception_message'],
+                jsonColumns: ['request_headers', 'response_headers', 'tags'],
+                uuidColumns: ['id', 'trace_id'],
+            );
         }
 
         $sortable = ['created_at', 'duration_ms', 'response_status'];
@@ -272,7 +281,13 @@ final class TracingApiController extends Controller
         $tags = is_array($raw) ? $raw : explode(',', (string) $raw);
 
         foreach ($tags as $tag) {
-            $tag = trim((string) $tag);
+            // Вложенный массив (?tag[][]=x) отсекаем: (string) на нём выдал бы
+            // warning и отфильтровал по литералу "Array".
+            if (!is_string($tag)) {
+                continue;
+            }
+
+            $tag = trim($tag);
 
             if ($tag !== '') {
                 $query->whereJsonContains('tags', $tag);
@@ -281,10 +296,72 @@ final class TracingApiController extends Controller
     }
 
     /**
-     * SQL-выражение приведения jsonb-колонки tags к тексту для подстрочного LIKE-поиска.
+     * Строковый query-параметр или null.
+     *
+     * Нельзя писать `if ($x = $request->query('x'))`: строка '0' в PHP falsy, и
+     * фильтр молча не применился бы (запрос вернул бы ВСЁ вместо совпавшего).
+     * Массив (?x[]=a) тоже отсекается здесь — иначе приведение (string) роняло бы
+     * запрос в 500.
      */
-    private function tagsTextExpression(string $driver): string
+    private function stringQuery(Request $request, string $key): ?string
     {
-        return $driver === 'pgsql' ? 'tags::text' : 'CAST(tags AS CHAR)';
+        $value = $request->query($key);
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /**
+     * Регистронезависимый поиск по подстроке в наборе колонок (OR между ними).
+     *
+     * ВАЖНО (инвариант безопасности): имена колонок — внутренние константы вызывающего
+     * кода и НИКОГДА не приходят из запроса; в raw-SQL интерполируются только они.
+     * Поисковый терм всегда передаётся биндингом.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder<covariant \Illuminate\Database\Eloquent\Model> $query
+     * @param list<string> $textColumns Текстовые колонки — сравниваются напрямую
+     * @param list<string> $jsonColumns JSON-колонки — предварительно приводятся к тексту
+     * @param list<string> $uuidColumns Колонки точного совпадения, если терм является UUID
+     */
+    private function applySearch(
+        \Illuminate\Database\Eloquent\Builder $query,
+        string $term,
+        array $textColumns,
+        array $jsonColumns,
+        array $uuidColumns,
+    ): void {
+        $isUuid = Str::isUuid($term);
+        // getDriverName() резолвится только на конкретном Connection, поэтому берём
+        // его ЗДЕСЬ, а не внутри замыкания (ConnectionInterface метод не объявляет).
+        /** @var \Illuminate\Database\Connection $conn */
+        $conn = $query->getConnection();
+        $driver = $conn->getDriverName();
+        // ОБЯЗАТЕЛЬНО mb_strtolower: strtolower() байтовый и не трогает кириллицу,
+        // тогда как SQL lower() на Postgres её опускает — из-за расхождения запрос
+        // вида '%Москва%' против lower(col)='москва' не совпал бы никогда.
+        $needle = '%' . mb_strtolower($term, 'UTF-8') . '%';
+
+        $query->where(function ($q) use ($isUuid, $term, $uuidColumns, $textColumns, $jsonColumns, $driver, $needle): void {
+            if ($isUuid) {
+                foreach ($uuidColumns as $column) {
+                    $q->orWhere($column, $term);
+                }
+            }
+
+            foreach ($textColumns as $column) {
+                $q->orWhereRaw("lower({$column}) like ?", [$needle]);
+            }
+
+            foreach ($jsonColumns as $column) {
+                $q->orWhereRaw('lower(' . $this->jsonTextExpression($column, $driver) . ') like ?', [$needle]);
+            }
+        });
+    }
+
+    /**
+     * SQL-выражение приведения JSON-колонки к тексту для подстрочного LIKE-поиска.
+     */
+    private function jsonTextExpression(string $column, string $driver): string
+    {
+        return $driver === 'pgsql' ? "{$column}::text" : "CAST({$column} AS CHAR)";
     }
 }

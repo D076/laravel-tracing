@@ -3,6 +3,7 @@
 use D076\Tracing\Models\OutgoingRequest;
 use D076\Tracing\Models\TracingRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 uses(RefreshDatabase::class)->group('cross-db');
@@ -82,6 +83,70 @@ it('filters outgoing records by an exact tag over the jsonb column', function ()
     OutgoingRequest::create(['method' => 'GET', 'url' => 'https://b.test', 'tags' => ['team:search']]);
 
     $response = $this->getJson('/tracing/api/outgoing?tag=team:billing')->assertOk();
+
+    expect($response->json('meta.total'))->toBe(1)
+        ->and($response->json('data.0.url'))->toBe('https://a.test');
+});
+
+it('deep-searches incoming payloads across the jsonb-to-text cast', function () {
+    // Exercises the driver-specific cast branch: pgsql `col::text` vs CAST(col AS CHAR).
+    TracingRequest::create([
+        'method' => 'POST',
+        'url' => '/api/orders',
+        'response_status' => 201,
+        'body_params' => ['customer' => ['phone' => '+79023396677']],
+    ]);
+    TracingRequest::create(['method' => 'POST', 'url' => '/api/other', 'response_status' => 201, 'body_params' => ['customer' => ['phone' => '+70000000000']]]);
+
+    $response = $this->getJson('/tracing/api/requests?payload=' . urlencode('+79023396677'))->assertOk();
+
+    expect($response->json('meta.total'))->toBe(1)
+        ->and($response->json('data.0.url'))->toBe('/api/orders');
+});
+
+it('deep-searches non-ASCII payloads case-insensitively', function () {
+    // Regression: PHP strtolower() is byte-wise and leaves Cyrillic untouched, while
+    // SQL lower() on Postgres does lowercase it — so an uppercase term used to match
+    // nothing at all. Skipped on SQLite, whose lower() is ASCII-only by design.
+    if (DB::connection()->getDriverName() === 'sqlite') {
+        $this->markTestSkipped('SQLite lower() is ASCII-only, so non-ASCII search is case-sensitive there.');
+    }
+
+    OutgoingRequest::create(['method' => 'POST', 'url' => 'https://a.test', 'request_body' => '{"city":"Москва"}']);
+    OutgoingRequest::create(['method' => 'POST', 'url' => 'https://b.test', 'request_body' => '{"city":"Казань"}']);
+
+    foreach (['Москва', 'москва', 'МОСКВА'] as $term) {
+        $response = $this->getJson('/tracing/api/outgoing?payload=' . urlencode($term))->assertOk();
+
+        expect($response->json('meta.total'))->toBe(1, "term: {$term}")
+            ->and($response->json('data.0.url'))->toBe('https://a.test');
+    }
+});
+
+it('finds non-ASCII values inside jsonb payloads', function () {
+    if (DB::connection()->getDriverName() === 'sqlite') {
+        $this->markTestSkipped('SQLite stores JSON with \uXXXX escapes and lower() is ASCII-only.');
+    }
+
+    TracingRequest::create([
+        'method' => 'POST',
+        'url' => '/api/orders',
+        'response_status' => 201,
+        'body_params' => ['city' => 'Москва'],
+    ]);
+    TracingRequest::create(['method' => 'POST', 'url' => '/api/other', 'response_status' => 201, 'body_params' => ['city' => 'Казань']]);
+
+    $response = $this->getJson('/tracing/api/requests?payload=' . urlencode('Москва'))->assertOk();
+
+    expect($response->json('meta.total'))->toBe(1)
+        ->and($response->json('data.0.url'))->toBe('/api/orders');
+});
+
+it('deep-searches outgoing bodies', function () {
+    OutgoingRequest::create(['method' => 'POST', 'url' => 'https://a.test', 'request_body' => '{"phone":"+79023396677"}']);
+    OutgoingRequest::create(['method' => 'POST', 'url' => 'https://b.test', 'request_body' => '{"phone":"+70000000000"}']);
+
+    $response = $this->getJson('/tracing/api/outgoing?payload=' . urlencode('+79023396677'))->assertOk();
 
     expect($response->json('meta.total'))->toBe(1)
         ->and($response->json('data.0.url'))->toBe('https://a.test');

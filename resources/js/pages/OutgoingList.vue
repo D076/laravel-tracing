@@ -30,7 +30,12 @@ const filters = reactive({
     has_exception: q.has_exception === '1',
     search: q.search ?? '',
     tag: q.tag ?? '',
+    payload: q.payload ?? '',
 })
+
+// Deep search is expensive (it scans bodies), so it is bound to a separate input
+// and only runs on Enter — never on every keystroke like the cheap search.
+const payloadInput = ref(q.payload ?? '')
 
 const STATUS_GROUPS = ['2xx', '3xx', '4xx', '5xx']
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
@@ -42,7 +47,8 @@ const hasActiveFilters = computed(() =>
     filters.date_to ||
     filters.has_exception ||
     filters.search ||
-    filters.tag,
+    filters.tag ||
+    filters.payload,
 )
 
 function buildQuery() {
@@ -54,6 +60,7 @@ function buildQuery() {
     if (filters.has_exception) query.has_exception = '1'
     if (filters.search) query.search = filters.search
     if (filters.tag) query.tag = filters.tag
+    if (filters.payload) query.payload = filters.payload
     if (sort.value !== 'created_at') query.sort = sort.value
     if (direction.value !== 'desc') query.direction = direction.value
     if (page.value > 1) query.page = String(page.value)
@@ -79,6 +86,7 @@ async function load() {
             has_exception: filters.has_exception || undefined,
             search: filters.search || undefined,
             tag: filters.tag || undefined,
+            payload: filters.payload || undefined,
             sort: sort.value,
             direction: direction.value,
             page: page.value,
@@ -131,25 +139,37 @@ function clearFilters() {
     filters.has_exception = false
     filters.search = ''
     filters.tag = ''
-    page.value = 1
+    filters.payload = ''
+    payloadInput.value = ''
+    // No page reset here — the filter watcher handles it via reloadFromFirstPage().
 }
 
 // Set the exact-tag filter (from clicking a tag chip in a row).
 function filterByTag(tag) {
     filters.tag = tag
-    page.value = 1
+}
+
+// Commit the deep-search term (Enter or the Search button) — this is what
+// actually triggers the expensive query.
+function runPayloadSearch() {
+    filters.payload = payloadInput.value.trim()
+}
+
+// Any filter change resets to page 1. Resetting the page fires the [sort,
+// direction, page] watcher, which loads — so only load() here when the page
+// was already 1, otherwise an expensive deep search would run twice.
+function reloadFromFirstPage() {
+    if (page.value !== 1) page.value = 1
+    else load()
 }
 
 let debounceTimer = null
 function scheduleLoad() {
     clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => { page.value = 1; load() }, 400)
+    debounceTimer = setTimeout(reloadFromFirstPage, 400)
 }
 
-watch(() => [filters.status_group.join(), filters.method, filters.has_exception, filters.date_from, filters.date_to, filters.tag], () => {
-    page.value = 1
-    load()
-})
+watch(() => [filters.status_group.join(), filters.method, filters.has_exception, filters.date_from, filters.date_to, filters.tag, filters.payload], reloadFromFirstPage)
 watch([sort, direction, page], load)
 
 onMounted(load)
@@ -214,11 +234,37 @@ onMounted(load)
             >↻</button>
         </div>
 
+        <!-- Deep search: scans bodies, so it only runs on Enter / button -->
+        <div class="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+            <input
+                v-model="payloadInput"
+                @keyup.enter="runPayloadSearch"
+                placeholder="Deep search: bodies, params, headers..."
+                class="text-sm border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-gray-400 flex-1 min-w-52"
+            />
+            <button
+                @click="runPayloadSearch"
+                class="text-sm px-3 py-1 rounded border border-gray-300 hover:bg-gray-50 text-gray-600 whitespace-nowrap"
+            >Search</button>
+            <span class="text-xs text-gray-400">Scans request/response bodies — slow on large datasets</span>
+        </div>
+
         <!-- Active tag filter -->
         <div v-if="filters.tag" class="flex items-center gap-1.5 text-xs text-gray-500">
             <span>Tag:</span>
             <TagBadge :tag="filters.tag" />
             <button @click="filters.tag = ''" class="text-gray-400 hover:text-gray-700" title="Clear tag filter">×</button>
+        </div>
+
+        <!-- Active deep search -->
+        <div v-if="filters.payload" class="flex items-center gap-1.5 text-xs text-gray-500">
+            <span>Deep search:</span>
+            <code class="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">{{ filters.payload }}</code>
+            <button
+                @click="filters.payload = ''; payloadInput = ''"
+                class="text-gray-400 hover:text-gray-700"
+                title="Clear deep search"
+            >×</button>
         </div>
     </div>
 
