@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
+ * @property list<string>|null $tags
  * @property string $method
  * @property string $url
  * @property string|null $route_name
@@ -70,6 +71,7 @@ final class TracingRequest extends Model
     protected function casts(): array
     {
         return [
+            'tags' => 'array',
             'request_headers' => 'array',
             'query_params' => 'array',
             'body_params' => 'array',

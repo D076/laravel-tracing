@@ -9,7 +9,7 @@ function invokeMaskJsonBody(OutgoingTracingService $service, ?string $body, arra
 
 describe('OutgoingTracingService::maskJsonBody', function () {
     beforeEach(function () {
-        $this->service = new OutgoingTracingService();
+        $this->service = new OutgoingTracingService(new \D076\Tracing\Context\Tags());
     });
 
     it('masks sensitive keys before truncating', function () {

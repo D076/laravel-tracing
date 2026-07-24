@@ -4,6 +4,7 @@ namespace D076\Tracing\Providers;
 
 use D076\Tracing\Context\TracingContext;
 use D076\Tracing\Context\TraceId;
+use D076\Tracing\Context\Tags;
 use D076\Tracing\Http\Middleware\TracingAuthMiddleware;
 use D076\Tracing\Listeners\RecordOutgoingRequest;
 use D076\Tracing\Middleware\TracingMiddleware;
@@ -34,6 +35,7 @@ final class TracingServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__ . '/../../config/tracing.php', 'tracing');
 
         $this->app->singleton(TraceId::class);
+        $this->app->singleton(Tags::class);
         $this->app->singleton(TracingContext::class);
 
         // Singleton обязателен: слушатель хранит время старта запроса между

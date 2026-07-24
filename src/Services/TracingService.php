@@ -2,6 +2,7 @@
 
 namespace D076\Tracing\Services;
 
+use D076\Tracing\Context\Tags;
 use D076\Tracing\Context\TracingContext;
 use D076\Tracing\Jobs\PersistTracingRecord;
 use D076\Tracing\Models\TracingRequest;
@@ -13,6 +14,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class TracingService
 {
+    public function __construct(private readonly Tags $tags)
+    {
+    }
+
     public function persist(TracingContext $ctx, Response $response): void
     {
         try {
@@ -72,6 +77,7 @@ final class TracingService
 
         return [
             'id' => $ctx->traceId,
+            'tags' => $this->tags->tags() ?: null,
             'method' => $ctx->method,
             'url' => $ctx->url,
             'route_name' => $ctx->routeName,

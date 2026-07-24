@@ -184,6 +184,53 @@ public function __invoke()
 
 For non-HTTP entry points (artisan commands, the scheduler), the id is generated on first access and also auto-added to Context, so jobs dispatched from there inherit it too.
 
+## Tags
+
+Attach arbitrary, application-defined tags to traced records and search by them — the equivalent of `Telescope::tag()`. Tags are a `list<string>`; the package never invents keys, the format is entirely yours (`team:billing`, `tenant:42`, `flow:checkout`).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRACING_TAGS_IN_LOGS` | `false` | Store tags in the **visible** `Context` (they then appear in every application log record). Default `false` keeps them in the **hidden** `Context` — propagated everywhere, but never added to your logs. |
+
+### Tagging from application code
+
+```php
+use D076\Tracing\Facades\Tracing;
+
+Tracing::tag('team:billing', 'tenant:42');  // add on top of existing tags
+Tracing::setTags(['flow:checkout']);        // replace the whole set
+Tracing::untag('tenant:42');                // remove specific tags
+Tracing::clearTags();                       // drop all tags for this scope
+Tracing::tags();                            // => list<string> currently in scope
+```
+
+Tags are deduplicated and trimmed; empty strings are ignored.
+
+### Scope and propagation
+
+Tags live in `Illuminate\Support\Facades\Context`, exactly like `trace_id`, which gives them the same reach with no extra wiring:
+
+- **Inbound → outbound.** A tag set during a request is attached to every outbound `Http::*` call made later in that request, *and* to the inbound record itself.
+- **Across job boundaries.** Queued jobs, events, chains, batches, and retries inherit the dispatching scope's tags; outbound calls inside the job carry them too.
+- **Jobs / CLI without an inbound request.** Works the same — tag anywhere and the records written afterwards pick it up.
+
+Timing is by design: the inbound record snapshots tags at `terminate()` (everything accumulated during the request), while each outbound record snapshots them when that call completes. So a tag added *after* an outbound call lands on the inbound record but not on that earlier outbound row.
+
+Tags are reset at the start of every inbound request (alongside `trace_id`), so nothing leaks between requests under Octane.
+
+### Searching by tags
+
+| Parameter | Matching | Notes |
+|-----------|----------|-------|
+| `?tag=team:billing` | exact | Repeat or comma-separate for AND: `?tag=a,b` or `?tag[]=a&tag[]=b`. Uses the index on PostgreSQL. |
+| `?search=billing` | substring | The standard search box — also matches URL and headers. |
+
+Both parameters work on `/{ui.path}/api/requests` and `/{ui.path}/api/outgoing`. In the web UI, tags render as chips on list rows and detail pages; clicking a chip applies the exact-tag filter, and typing in the search box matches tags by substring.
+
+### Storage
+
+Tags are stored in a nullable `tags` JSON column on both tables, added by an additive migration. On PostgreSQL the migration also creates a **GIN index** on each `tags` column, so exact-tag filtering stays fast at scale (a plain btree index cannot serve JSON containment). Without tags, behaviour and storage are unchanged.
+
 ## Separate database for tracing
 
 By default the two tracing tables (`tracing_requests`, `tracing_outgoing_requests`) are created in your application's primary database. For production workloads where you log 100 % of traffic this means constant inserts and large table growth alongside your business data. A dedicated database isolates that load completely.

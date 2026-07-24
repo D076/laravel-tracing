@@ -38,6 +38,18 @@ return [
      | Записи хранятся в таблице tracing_outgoing_requests.
      | Привязываются к входящему запросу через trace_id.
      */
+    /*
+     | Произвольные теги приложения на записях (аналог Telescope::tag()).
+     | Навешиваются через фасад D076\Tracing\Facades\Tracing::tag('...').
+     |
+     | in_logs=false (по умолчанию) — теги хранятся в СКРЫТОМ Context и не
+     | подмешиваются в лог-записи приложения; true — в видимом Context, тогда
+     | Laravel добавляет их в контекст каждого лога.
+     */
+    'tags' => [
+        'in_logs' => (bool) env('TRACING_TAGS_IN_LOGS', false),
+    ],
+
     'outgoing' => [
         'enabled' => (bool) env('TRACING_OUTGOING_ENABLED', true),
         'driver' => env('TRACING_OUTGOING_DRIVER', 'database'),

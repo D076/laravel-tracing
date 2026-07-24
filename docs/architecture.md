@@ -6,7 +6,10 @@
 src/
 ├── Context/
 │   ├── TracingContext.php              # Singleton holding the current inbound request state
-│   └── TraceId.php                     # Singleton for X-Trace-Id
+│   ├── TraceId.php                     # Singleton for X-Trace-Id
+│   └── Tags.php                        # Application-defined tags, scoped via Context
+├── Facades/
+│   └── Tracing.php                     # Public API for tagging records
 ├── Http/
 │   ├── Controllers/
 │   │   ├── TracingUiController.php    # SPA shell + serves static assets from resources/dist/
@@ -61,6 +64,22 @@ $traceId->get();    // returns the current id (reads from Context, or generates 
 $traceId->reset();  // resets the singleton cache (Context is left intact; clear it separately if needed)
 ```
 
+### `Context/Tags`
+
+Application-defined tags on traced records, exposed publicly through the `D076\Tracing\Facades\Tracing` facade (see [Configuration → Tags](configuration.md#tags)). Follows the `TraceId` idiom — `Illuminate\Support\Facades\Context` is the single source of truth, so tags propagate across job/CLI boundaries for free. Deliberately holds **no** local cache.
+
+Storage is a read-modify-write of the full array under one Context key (not `push`), which is what makes overwrite and removal possible, not just appending. `tracing.tags.in_logs` picks the store: hidden (default, invisible to logs) or visible.
+
+```php
+$tags->tag('a', 'b');      // add on top
+$tags->setTags(['x']);     // replace the whole set
+$tags->untag('a');         // remove specific
+$tags->clearTags();        // drop all (alias: reset(), called per request)
+$tags->tags();             // list<string>, deduplicated
+```
+
+Both services read `tags()` at persist time, so an inbound record captures every tag added during the request, and each outbound record captures those set before that call finished.
+
 ### `Context/TracingContext` (singleton)
 
 Value object holding the state of a single inbound request. Filled in sequentially:
@@ -73,7 +92,7 @@ Value object holding the state of a single inbound request. Filled in sequential
 
 ### `Middleware/TraceIdMiddleware`
 
-At the start of every request, calls `Context::forget('tracing.trace_id')` and `TraceId::reset()`, generates a UUID7, and adds `X-Trace-Id` to the response headers. Registered only when `TRACING_ENABLED=true` — the master switch gates the whole runtime, so a disabled package never touches `Context` and never leaks `trace_id` into application logs.
+At the start of every request, calls `Context::forget('tracing.trace_id')`, `TraceId::reset()`, and `Tags::reset()` (so neither the id nor tags leak between requests under Octane), generates a UUID7, and adds `X-Trace-Id` to the response headers. Registered only when `TRACING_ENABLED=true` — the master switch gates the whole runtime, so a disabled package never touches `Context` and never leaks `trace_id` into application logs.
 
 ### `Middleware/TracingMiddleware`
 

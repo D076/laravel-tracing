@@ -4,7 +4,7 @@ use D076\Tracing\Services\TracingService;
 
 describe('TracingService::maskBodyParams', function () {
     beforeEach(function () {
-        $this->service = new TracingService();
+        $this->service = new TracingService(new \D076\Tracing\Context\Tags());
     });
 
     it('masks a flat key', function () {

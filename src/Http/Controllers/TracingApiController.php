@@ -53,6 +53,8 @@ final class TracingApiController extends Controller
             $query->whereNotNull('exception');
         }
 
+        $this->applyTagFilter($query, $request);
+
         if ($search = $request->query('search')) {
             $isUuid = Str::isUuid($search);
             /** @var \Illuminate\Database\Connection $conn */
@@ -60,13 +62,15 @@ final class TracingApiController extends Controller
             $jsonCast = $conn->getDriverName() === 'pgsql'
                 ? 'request_headers::text'
                 : 'CAST(request_headers AS CHAR)';
-            $query->where(function ($q) use ($search, $isUuid, $jsonCast): void {
+            $tagsCast = $this->tagsTextExpression($conn->getDriverName());
+            $query->where(function ($q) use ($search, $isUuid, $jsonCast, $tagsCast): void {
                 if ($isUuid) {
                     $q->where('id', $search);
                 }
                 $term = strtolower($search);
                 $q->orWhereRaw('lower(url) like ?', ['%' . $term . '%'])
-                    ->orWhereRaw("lower({$jsonCast}) like ?", ['%' . $term . '%']);
+                    ->orWhereRaw("lower({$jsonCast}) like ?", ['%' . $term . '%'])
+                    ->orWhereRaw("lower({$tagsCast}) like ?", ['%' . $term . '%']);
             });
         }
 
@@ -79,13 +83,14 @@ final class TracingApiController extends Controller
         $perPage = min(max((int) $request->query('per_page', 50), 10), 200);
 
         $paginator = $query
-            ->select(['id', 'method', 'url', 'route_name', 'route_path', 'response_status', 'exception', 'duration_ms', 'ip_address', 'created_at'])
+            ->select(['id', 'tags', 'method', 'url', 'route_name', 'route_path', 'response_status', 'exception', 'duration_ms', 'ip_address', 'created_at'])
             ->orderBy($sort, $direction)
             ->paginate($perPage);
 
         return response()->json([
             'data' => $paginator->through(fn(TracingRequest $r) => [
                 'id' => $r->id,
+                'tags' => $r->tags,
                 'method' => $r->method,
                 'url' => $r->url,
                 'route_name' => $r->route_name,
@@ -113,6 +118,7 @@ final class TracingApiController extends Controller
         return response()->json([
             'data' => [
                 'id' => $record->id,
+                'tags' => $record->tags,
                 'method' => $record->method,
                 'url' => $record->url,
                 'route_name' => $record->route_name,
@@ -175,13 +181,20 @@ final class TracingApiController extends Controller
             $query->whereNotNull('exception_class');
         }
 
+        $this->applyTagFilter($query, $request);
+
         if ($search = $request->query('search')) {
             $isUuid = Str::isUuid($search);
-            $query->where(function ($q) use ($search, $isUuid): void {
+            /** @var \Illuminate\Database\Connection $conn */
+            $conn = $query->getConnection();
+            $tagsCast = $this->tagsTextExpression($conn->getDriverName());
+            $query->where(function ($q) use ($search, $isUuid, $tagsCast): void {
                 if ($isUuid) {
                     $q->where('id', $search)->orWhere('trace_id', $search);
                 }
-                $q->orWhereRaw('lower(url) like ?', ['%' . strtolower($search) . '%']);
+                $term = strtolower($search);
+                $q->orWhereRaw('lower(url) like ?', ['%' . $term . '%'])
+                    ->orWhereRaw("lower({$tagsCast}) like ?", ['%' . $term . '%']);
             });
         }
 
@@ -191,7 +204,7 @@ final class TracingApiController extends Controller
         $perPage = min(max((int) $request->query('per_page', 50), 10), 200);
 
         $paginator = $query
-            ->select(['id', 'trace_id', 'method', 'url', 'response_status', 'exception_class', 'duration_ms', 'created_at'])
+            ->select(['id', 'trace_id', 'tags', 'method', 'url', 'response_status', 'exception_class', 'duration_ms', 'created_at'])
             ->orderBy($sort, $direction)
             ->paginate($perPage);
 
@@ -199,6 +212,7 @@ final class TracingApiController extends Controller
             'data' => $paginator->through(fn(OutgoingRequest $r) => [
                 'id' => $r->id,
                 'trace_id' => $r->trace_id,
+                'tags' => $r->tags,
                 'method' => $r->method,
                 'url' => $r->url,
                 'response_status' => $r->response_status,
@@ -224,6 +238,7 @@ final class TracingApiController extends Controller
             'data' => [
                 'id' => $record->id,
                 'trace_id' => $record->trace_id,
+                'tags' => $record->tags,
                 'method' => $record->method,
                 'url' => $record->url,
                 'request_headers' => $record->request_headers,
@@ -237,5 +252,39 @@ final class TracingApiController extends Controller
                 'created_at' => $record->created_at->toIso8601String(),
             ],
         ]);
+    }
+
+    /**
+     * Точный фильтр по тегам (?tag=a или ?tag[]=a&tag[]=b или ?tag=a,b).
+     * Несколько тегов — по AND. Использует whereJsonContains: pgsql @> (GIN),
+     * mysql JSON_CONTAINS, sqlite json_each — единый код без ветвления.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder<covariant \Illuminate\Database\Eloquent\Model> $query
+     */
+    private function applyTagFilter(\Illuminate\Database\Eloquent\Builder $query, Request $request): void
+    {
+        $raw = $request->query('tag');
+
+        if ($raw === null) {
+            return;
+        }
+
+        $tags = is_array($raw) ? $raw : explode(',', (string) $raw);
+
+        foreach ($tags as $tag) {
+            $tag = trim((string) $tag);
+
+            if ($tag !== '') {
+                $query->whereJsonContains('tags', $tag);
+            }
+        }
+    }
+
+    /**
+     * SQL-выражение приведения jsonb-колонки tags к тексту для подстрочного LIKE-поиска.
+     */
+    private function tagsTextExpression(string $driver): string
+    {
+        return $driver === 'pgsql' ? 'tags::text' : 'CAST(tags AS CHAR)';
     }
 }

@@ -7,6 +7,7 @@
 | Column | Description |
 |--------|-------------|
 | `id` | X-Trace-Id (UUID7) — primary key |
+| `tags` | Application-defined tags, JSON array of strings (nullable) — see [Configuration → Tags](configuration.md#tags) |
 | `method` | HTTP method |
 | `url` | Full request URL |
 | `route_name` | Laravel route name |
@@ -30,6 +31,7 @@
 |--------|-------------|
 | `id` | UUID7 — primary key |
 | `trace_id` | Soft reference to `tracing_requests.id` (nullable — CLI/jobs) |
+| `tags` | Application-defined tags, JSON array of strings (nullable) — see [Configuration → Tags](configuration.md#tags) |
 | `method` | HTTP method |
 | `url` | Full URL |
 | `request_headers` | Headers (sensitive ones — `[REDACTED]`) |
@@ -45,15 +47,18 @@
 
 ### `tracing_requests`
 - `uuid` primary key (= X-Trace-Id)
-- `jsonb` columns for headers, parameters, and the exception
-- Index on `created_at`
+- `jsonb` columns for headers, parameters, the exception, and `tags`
+- Index on `created_at`; **GIN index on `tags`** (PostgreSQL only — required for JSON containment lookups)
 - No `updated_at` column — rows are immutable
 
 ### `tracing_outgoing_requests`
 - `uuid` primary key (UUID7)
 - `trace_id` — indexed soft reference to `tracing_requests.id`, no FK constraint (works from jobs and CLI)
-- `jsonb` for headers
+- `jsonb` for headers and `tags`
+- **GIN index on `tags`** (PostgreSQL only)
 - No `updated_at` column
+
+`tags` is added by a separate additive migration (`..._add_tags_to_tracing_tables.php`), so existing installations upgrade without touching already-applied migrations.
 
 ## Driver compatibility
 

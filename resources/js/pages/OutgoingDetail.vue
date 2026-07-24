@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { fetchOutgoingRequest } from '../api.js'
 import StatusBadge from '../components/StatusBadge.vue'
 import MethodBadge from '../components/MethodBadge.vue'
+import TagBadge from '../components/TagBadge.vue'
 import JsonViewer from '../components/JsonViewer.vue'
 import { formatDuration, durationClass, formatTime } from '../utils.js'
 
@@ -64,6 +65,17 @@ async function share() {
                     <button @click="share" class="text-xs text-gray-400 hover:text-gray-700 transition-colors whitespace-nowrap">
                         {{ shared ? '✓ Copied' : 'Share' }}
                     </button>
+                </div>
+
+                <div v-if="record.tags?.length" class="mt-3 flex items-center gap-1.5 flex-wrap text-xs">
+                    <span class="text-gray-400">Tags</span>
+                    <TagBadge
+                        v-for="t in record.tags"
+                        :key="t"
+                        :tag="t"
+                        clickable
+                        @select="router.push({ path: '/outgoing', query: { tag: t } })"
+                    />
                 </div>
 
                 <div v-if="record.trace_id" class="mt-3 flex items-center gap-1.5 text-xs">

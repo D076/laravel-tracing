@@ -75,3 +75,24 @@ it('finds an outgoing record by a url substring', function () {
     expect($response->json('meta.total'))->toBe(1)
         ->and($response->json('data.0.url'))->toContain('stripe');
 });
+
+it('filters outgoing records by an exact tag over the jsonb column', function () {
+    // Exercises whereJsonContains: pgsql `tags @> ?` (GIN), mysql JSON_CONTAINS, sqlite json_each.
+    OutgoingRequest::create(['method' => 'GET', 'url' => 'https://a.test', 'tags' => ['team:billing']]);
+    OutgoingRequest::create(['method' => 'GET', 'url' => 'https://b.test', 'tags' => ['team:search']]);
+
+    $response = $this->getJson('/tracing/api/outgoing?tag=team:billing')->assertOk();
+
+    expect($response->json('meta.total'))->toBe(1)
+        ->and($response->json('data.0.url'))->toBe('https://a.test');
+});
+
+it('finds an incoming record by a tag substring in the standard search', function () {
+    TracingRequest::create(['method' => 'GET', 'url' => '/alpha', 'response_status' => 200, 'tags' => ['env:staging']]);
+    TracingRequest::create(['method' => 'GET', 'url' => '/beta', 'response_status' => 200, 'tags' => ['env:prod']]);
+
+    $response = $this->getJson('/tracing/api/requests?search=staging')->assertOk();
+
+    expect($response->json('meta.total'))->toBe(1)
+        ->and($response->json('data.0.url'))->toBe('/alpha');
+});

@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property string $id
  * @property string|null $trace_id
+ * @property list<string>|null $tags
  * @property string $method
  * @property string $url
  * @property array<string, list<string>>|null $request_headers
@@ -58,6 +59,7 @@ final class OutgoingRequest extends Model
     protected function casts(): array
     {
         return [
+            'tags' => 'array',
             'request_headers' => 'array',
             'response_headers' => 'array',
             'response_status' => 'integer',

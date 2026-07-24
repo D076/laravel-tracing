@@ -58,7 +58,7 @@ it('rejects a valid Windows-1251 body stored as-is', function () {
 })->throws(QueryException::class, 'invalid byte sequence for encoding "UTF8"');
 
 it('persists a Windows-1251 response after the service normalizes it to UTF-8', function () {
-    $service = new D076\Tracing\Services\OutgoingTracingService();
+    $service = new D076\Tracing\Services\OutgoingTracingService(new D076\Tracing\Context\Tags());
     $cp1251 = mb_convert_encoding(str_repeat('Москва ', 10), 'Windows-1251', 'UTF-8');
 
     // Full service chokepoint: transcode -> mask -> truncate.
@@ -73,7 +73,7 @@ it('persists a Windows-1251 response after the service normalizes it to UTF-8', 
 });
 
 it('persists a binary response as a marker instead of crashing', function () {
-    $service = new D076\Tracing\Services\OutgoingTracingService();
+    $service = new D076\Tracing\Services\OutgoingTracingService(new D076\Tracing\Context\Tags());
     $binary = random_bytes(64) . "\x98\x98\x98";
 
     $normalized = (new ReflectionMethod($service, 'maskBody'))

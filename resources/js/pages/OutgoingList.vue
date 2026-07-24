@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { fetchOutgoing } from '../api.js'
 import StatusBadge from '../components/StatusBadge.vue'
 import MethodBadge from '../components/MethodBadge.vue'
+import TagBadge from '../components/TagBadge.vue'
 import { formatDuration, durationClass, timeAgo, formatTime, wantsNewTab } from '../utils.js'
 
 const router = useRouter()
@@ -28,6 +29,7 @@ const filters = reactive({
     date_to: q.date_to ?? '',
     has_exception: q.has_exception === '1',
     search: q.search ?? '',
+    tag: q.tag ?? '',
 })
 
 const STATUS_GROUPS = ['2xx', '3xx', '4xx', '5xx']
@@ -39,7 +41,8 @@ const hasActiveFilters = computed(() =>
     filters.date_from ||
     filters.date_to ||
     filters.has_exception ||
-    filters.search,
+    filters.search ||
+    filters.tag,
 )
 
 function buildQuery() {
@@ -50,6 +53,7 @@ function buildQuery() {
     if (filters.date_to) query.date_to = filters.date_to
     if (filters.has_exception) query.has_exception = '1'
     if (filters.search) query.search = filters.search
+    if (filters.tag) query.tag = filters.tag
     if (sort.value !== 'created_at') query.sort = sort.value
     if (direction.value !== 'desc') query.direction = direction.value
     if (page.value > 1) query.page = String(page.value)
@@ -74,6 +78,7 @@ async function load() {
             date_to: filters.date_to || undefined,
             has_exception: filters.has_exception || undefined,
             search: filters.search || undefined,
+            tag: filters.tag || undefined,
             sort: sort.value,
             direction: direction.value,
             page: page.value,
@@ -125,6 +130,13 @@ function clearFilters() {
     filters.date_to = ''
     filters.has_exception = false
     filters.search = ''
+    filters.tag = ''
+    page.value = 1
+}
+
+// Set the exact-tag filter (from clicking a tag chip in a row).
+function filterByTag(tag) {
+    filters.tag = tag
     page.value = 1
 }
 
@@ -134,7 +146,7 @@ function scheduleLoad() {
     debounceTimer = setTimeout(() => { page.value = 1; load() }, 400)
 }
 
-watch(() => [filters.status_group.join(), filters.method, filters.has_exception, filters.date_from, filters.date_to], () => {
+watch(() => [filters.status_group.join(), filters.method, filters.has_exception, filters.date_from, filters.date_to, filters.tag], () => {
     page.value = 1
     load()
 })
@@ -191,7 +203,7 @@ onMounted(load)
             <input
                 v-model="filters.search"
                 @input="scheduleLoad"
-                placeholder="URL, Trace ID..."
+                placeholder="URL, Trace ID, or tag..."
                 class="text-sm border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-gray-400 flex-1 min-w-52"
             />
 
@@ -200,6 +212,13 @@ onMounted(load)
                 class="text-sm px-3 py-1 rounded border border-gray-300 hover:bg-gray-50 text-gray-600"
                 title="Refresh"
             >↻</button>
+        </div>
+
+        <!-- Active tag filter -->
+        <div v-if="filters.tag" class="flex items-center gap-1.5 text-xs text-gray-500">
+            <span>Tag:</span>
+            <TagBadge :tag="filters.tag" />
+            <button @click="filters.tag = ''" class="text-gray-400 hover:text-gray-700" title="Clear tag filter">×</button>
         </div>
     </div>
 
@@ -247,6 +266,9 @@ onMounted(load)
                     <td class="px-4 py-3 max-w-0">
                         <div class="truncate text-xs font-mono text-gray-800">{{ r.url }}</div>
                         <div v-if="r.trace_id" class="text-xs text-gray-400 font-mono truncate mt-0.5">{{ r.trace_id }}</div>
+                        <div v-if="r.tags?.length" class="flex flex-wrap gap-1 mt-1">
+                            <TagBadge v-for="t in r.tags" :key="t" :tag="t" clickable @select="filterByTag" />
+                        </div>
                     </td>
                     <td class="px-4 py-3">
                         <span :class="['text-xs font-mono', durationClass(r.duration_ms)]">

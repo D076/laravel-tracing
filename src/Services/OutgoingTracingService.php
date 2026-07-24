@@ -2,6 +2,7 @@
 
 namespace D076\Tracing\Services;
 
+use D076\Tracing\Context\Tags;
 use D076\Tracing\Jobs\PersistOutgoingRecord;
 use D076\Tracing\Models\OutgoingRequest;
 use D076\Tracing\Support\BodyEncoding;
@@ -14,6 +15,10 @@ use Throwable;
 
 final class OutgoingTracingService
 {
+    public function __construct(private readonly Tags $tags)
+    {
+    }
+
     public function persist(
         string $traceId,
         RequestInterface $request,
@@ -82,6 +87,7 @@ final class OutgoingTracingService
         return [
             'id' => (string) Str::uuid7(),
             'trace_id' => $traceId,
+            'tags' => $this->tags->tags() ?: null,
             'method' => $request->getMethod(),
             'url' => (string) $request->getUri(),
             'request_headers' => $requestHeaders ?: null,

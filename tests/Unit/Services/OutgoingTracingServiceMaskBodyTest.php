@@ -14,7 +14,7 @@ function invokeMaskBody(
 
 describe('OutgoingTracingService::maskBody (dispatcher)', function () {
     beforeEach(function () {
-        $this->service = new OutgoingTracingService();
+        $this->service = new OutgoingTracingService(new \D076\Tracing\Context\Tags());
         config()->set('tracing.outgoing.max_body_size', 10000);
     });
 
