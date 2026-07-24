@@ -66,18 +66,28 @@ final class TracingServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Install-time регистрации доступны ВСЕГДА, независимо от мастер-выключателя:
+        // иначе TRACING_ENABLED=false молча убрал бы таблицы из `migrate`, а повторное
+        // включение требовало бы вручную вспоминать про миграции.
+        $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
+
+        $this->publishes([
+            __DIR__ . '/../../config/tracing.php' => config_path('tracing.php'),
+        ], 'tracing-config');
+
+        // Мастер-выключатель. TRACING_ENABLED=false полностью глушит рантайм пакета:
+        // ни middleware/Context (trace_id перестаёт течь в логи приложения), ни записи
+        // исходящих, ни UI-роутов. Всё, что ниже, — рантайм-поведение.
+        if (!config('tracing.enabled', true)) {
+            return;
+        }
+
         // prependMiddleware добавляет в начало стека, поэтому вызываем в обратном порядке:
         // сначала Tracing (окажется вторым), затем TraceId (окажется первым).
         /** @var HttpKernel $kernel */
         $kernel = $this->app->make(Kernel::class);
         $kernel->prependMiddleware(TracingMiddleware::class)
             ->prependMiddleware(TraceIdMiddleware::class);
-
-        $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
-
-        $this->publishes([
-            __DIR__ . '/../../config/tracing.php' => config_path('tracing.php'),
-        ], 'tracing-config');
 
         // Динамически добавляем UI-путь в ignore_paths на случай,
         // если пользователь сменил TRACING_UI_PATH

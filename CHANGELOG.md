@@ -9,6 +9,14 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-24
+
+### Fixed
+- `TRACING_ENABLED=false` is now a true master switch. Previously it only stopped inbound database recording: `TraceIdMiddleware` still ran and pushed a `trace_id` into `Illuminate\Support\Facades\Context` — which Laravel automatically attaches to every log record, so the id leaked into the host app's logs even with tracing "off" and no record was ever written. Outbound requests also kept being recorded, because they were gated by the independent `TRACING_OUTGOING_ENABLED` rather than the master flag. With the package disabled, the service provider now short-circuits its entire runtime: no middleware, no `Context`/`trace_id`, no `X-Trace-Id` response header, no outbound recording, and no UI routes. Migrations and config publishing stay registered, so the package still installs and `migrate`s while disabled.
+
+### Changed
+- **Behavior change** (only affects `TRACING_ENABLED=false`): the `X-Trace-Id` response header is no longer emitted when tracing is disabled. Previously the header was set on every response regardless of the flag. If your app disables tracing but relies on `X-Trace-Id`, keep `TRACING_ENABLED=true` and exclude routes via `ignore_paths` instead.
+
 ## [0.3.2] - 2026-07-23
 
 ### Fixed
@@ -97,7 +105,8 @@ Initial release.
 - Retention via `php artisan model:prune` (`tracing.retention_days`, default 30).
 - Cross-database SQL compatibility: PostgreSQL, MySQL, SQLite.
 
-[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/d076/laravel-tracing/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/d076/laravel-tracing/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/d076/laravel-tracing/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/d076/laravel-tracing/compare/v0.2.4...v0.3.0

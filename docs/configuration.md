@@ -10,7 +10,7 @@ php artisan vendor:publish --tag=tracing-config
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TRACING_ENABLED` | `true` | Toggle database recording (`X-Trace-Id` always works) |
+| `TRACING_ENABLED` | `true` | Master switch. `false` fully disables the package at runtime: no inbound/outbound recording, no `trace_id` in `Context` (so it stops leaking into your application logs), no `X-Trace-Id` header, no UI routes. Migrations and config publishing stay available. |
 | `TRACING_DRIVER` | `database` | `database` (sync) or `queue` (async) |
 | `TRACING_QUEUE` | `null` | Queue name for async mode |
 | `TRACING_QUEUE_CONNECTION` | `null` | Queue connection |
@@ -78,7 +78,7 @@ RateLimiter::for('tracing-api', fn ($request) =>
 
 ## Excluding routes (inbound)
 
-`TRACING_ENABLED=false` disables database recording (`X-Trace-Id` keeps working). To exclude individual routes, use `ignore_paths` in the config (supports the `*` wildcard):
+`TRACING_ENABLED=false` is a master switch that disables the whole package at runtime (recording, `Context`/`trace_id`, the `X-Trace-Id` header, and the UI). To keep tracing on but exclude individual routes, use `ignore_paths` in the config (supports the `*` wildcard):
 
 ```php
 'ignore_paths' => [

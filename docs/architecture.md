@@ -73,7 +73,7 @@ Value object holding the state of a single inbound request. Filled in sequential
 
 ### `Middleware/TraceIdMiddleware`
 
-At the start of every request, calls `Context::forget('tracing.trace_id')` and `TraceId::reset()`, generates a UUID7, and adds `X-Trace-Id` to the response headers. Runs regardless of `TRACING_ENABLED`.
+At the start of every request, calls `Context::forget('tracing.trace_id')` and `TraceId::reset()`, generates a UUID7, and adds `X-Trace-Id` to the response headers. Registered only when `TRACING_ENABLED=true` — the master switch gates the whole runtime, so a disabled package never touches `Context` and never leaks `trace_id` into application logs.
 
 ### `Middleware/TracingMiddleware`
 
