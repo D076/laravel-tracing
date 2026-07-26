@@ -4,13 +4,26 @@ namespace D076\Tracing\Http\Controllers;
 
 use D076\Tracing\Models\TracingRequest;
 use D076\Tracing\Models\OutgoingRequest;
+use Carbon\Exceptions\InvalidFormatException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 final class TracingApiController extends Controller
 {
+    /**
+     * LIKE escape character. Not a backslash: pgsql and mysql spell a literal
+     * backslash inside ESCAPE '...' differently, '!' is portable across all three
+     * supported drivers.
+     */
+    private const LIKE_ESCAPE = '!';
+
+    /** Accepted ?date_from / ?date_to formats. A bare date bounds the whole day. */
+    private const DATE_FORMATS = ['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s'];
+
     public function index(Request $request): JsonResponse
     {
         $query = TracingRequest::query();
@@ -38,16 +51,10 @@ final class TracingApiController extends Controller
         }
 
         if (($routePath = $this->stringQuery($request, 'route_path')) !== null) {
-            $query->whereRaw('lower(route_path) like ?', ['%' . mb_strtolower($routePath, 'UTF-8') . '%']);
+            $query->whereRaw("lower(route_path) like ? escape '" . self::LIKE_ESCAPE . "'", [$this->likeContains($routePath)]);
         }
 
-        if (($dateFrom = $this->stringQuery($request, 'date_from')) !== null) {
-            $query->where('created_at', '>=', $dateFrom);
-        }
-
-        if (($dateTo = $this->stringQuery($request, 'date_to')) !== null) {
-            $query->where('created_at', '<=', $dateTo . ' 23:59:59');
-        }
+        $this->applyDateRange($query, $request);
 
         if ($request->boolean('has_exception')) {
             $query->whereNotNull('exception');
@@ -172,13 +179,7 @@ final class TracingApiController extends Controller
             $query->where('method', strtoupper($method));
         }
 
-        if (($dateFrom = $this->stringQuery($request, 'date_from')) !== null) {
-            $query->where('created_at', '>=', $dateFrom);
-        }
-
-        if (($dateTo = $this->stringQuery($request, 'date_to')) !== null) {
-            $query->where('created_at', '<=', $dateTo . ' 23:59:59');
-        }
+        $this->applyDateRange($query, $request);
 
         if ($request->boolean('has_exception')) {
             $query->whereNotNull('exception_class');
@@ -335,12 +336,10 @@ final class TracingApiController extends Controller
         /** @var \Illuminate\Database\Connection $conn */
         $conn = $query->getConnection();
         $driver = $conn->getDriverName();
-        // ОБЯЗАТЕЛЬНО mb_strtolower: strtolower() байтовый и не трогает кириллицу,
-        // тогда как SQL lower() на Postgres её опускает — из-за расхождения запрос
-        // вида '%Москва%' против lower(col)='москва' не совпал бы никогда.
-        $needle = '%' . mb_strtolower($term, 'UTF-8') . '%';
+        $needle = $this->likeContains($term);
+        $escape = " escape '" . self::LIKE_ESCAPE . "'";
 
-        $query->where(function ($q) use ($isUuid, $term, $uuidColumns, $textColumns, $jsonColumns, $driver, $needle): void {
+        $query->where(function ($q) use ($isUuid, $term, $uuidColumns, $textColumns, $jsonColumns, $driver, $needle, $escape): void {
             if ($isUuid) {
                 foreach ($uuidColumns as $column) {
                     $q->orWhere($column, $term);
@@ -348,13 +347,97 @@ final class TracingApiController extends Controller
             }
 
             foreach ($textColumns as $column) {
-                $q->orWhereRaw("lower({$column}) like ?", [$needle]);
+                $q->orWhereRaw("lower({$column}) like ?{$escape}", [$needle]);
             }
 
             foreach ($jsonColumns as $column) {
-                $q->orWhereRaw('lower(' . $this->jsonTextExpression($column, $driver) . ') like ?', [$needle]);
+                $q->orWhereRaw('lower(' . $this->jsonTextExpression($column, $driver) . ") like ?{$escape}", [$needle]);
             }
         });
+    }
+
+    /**
+     * A user term turned into a case-insensitive LIKE substring pattern.
+     *
+     * mb_strtolower is mandatory: strtolower() is byte-wise and leaves Cyrillic
+     * alone, while SQL lower() on Postgres does fold it — the mismatch made
+     * '%Москва%' compared against lower(col) never match.
+     *
+     * Wildcards are escaped so that a term is matched literally: unescaped, a
+     * search for "%" matched every row and "a_b" matched "a.b".
+     */
+    private function likeContains(string $term): string
+    {
+        $e = self::LIKE_ESCAPE;
+
+        return '%' . str_replace([$e, '%', '_'], [$e . $e, $e . '%', $e . '_'], mb_strtolower($term, 'UTF-8')) . '%';
+    }
+
+    /**
+     * Inclusive created_at range from ?date_from / ?date_to.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder<covariant \Illuminate\Database\Eloquent\Model> $query
+     */
+    private function applyDateRange(\Illuminate\Database\Eloquent\Builder $query, Request $request): void
+    {
+        if (($from = $this->dateQuery($request, 'date_from')) !== null) {
+            $query->where('created_at', '>=', $from);
+        }
+
+        if (($to = $this->dateQuery($request, 'date_to', endOfDay: true)) !== null) {
+            $query->where('created_at', '<=', $to);
+        }
+    }
+
+    /**
+     * A parsed date query parameter, or null when absent.
+     *
+     * Rejected with 422 rather than ignored. The raw string used to reach the
+     * driver and Postgres answered "invalid input syntax for type timestamp"
+     * with HTTP 500; ignoring it instead would trade that for a worse failure —
+     * a 200 over an unfiltered result set. Carbon::parse() alone is no fix
+     * either: it reads "x" as a military timezone and shifts the window by
+     * hours, and a mistyped year as a valid date that quietly matches nothing.
+     * Hence an explicit format list, which is also what the UI sends.
+     */
+    private function dateQuery(Request $request, string $key, bool $endOfDay = false): ?Carbon
+    {
+        $raw = $request->query($key);
+
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        // An array reaches here as ?date_from[]=... — rejected rather than
+        // dropped, or the endpoint would answer 200 over an unfiltered set.
+        $value = is_string($raw) ? $raw : null;
+
+        foreach ($value === null ? [] : self::DATE_FORMATS as $format) {
+            try {
+                $date = Carbon::rawCreateFromFormat($format, $value);
+            } catch (InvalidFormatException) {
+                continue;
+            }
+
+            // createFromFormat accepts overflow ('2026-02-31' rolls into March),
+            // so round-tripping is what actually validates the value.
+            if ($date->format($format) !== $value) {
+                continue;
+            }
+
+            // Whatever the format leaves unspecified is taken from "now", which
+            // would make the same query mean something different every minute.
+            return match ($format) {
+                'Y-m-d' => $endOfDay ? $date->endOfDay() : $date->startOfDay(),
+                'Y-m-d H:i' => $date->setSecond(0),
+                default => $date,
+            };
+        }
+
+        throw new HttpResponseException(response()->json([
+            'message' => "Invalid {$key}: expected one of " . implode(', ', self::DATE_FORMATS) . ".",
+            'errors' => [$key => ['The ' . $key . ' field must match one of ' . implode(', ', self::DATE_FORMATS) . '.']],
+        ], 422));
     }
 
     /**

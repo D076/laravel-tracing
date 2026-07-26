@@ -152,6 +152,30 @@ it('deep-searches outgoing bodies', function () {
         ->and($response->json('data.0.url'))->toBe('https://a.test');
 });
 
+it('applies the LIKE ESCAPE clause on every driver', function () {
+    // The escape character is '!' rather than a backslash because pgsql and mysql
+    // spell a literal backslash inside ESCAPE '...' differently. This asserts the
+    // clause parses at all on the driver under test, and that % stays literal.
+    OutgoingRequest::create(['method' => 'GET', 'url' => 'https://a.test/alpha']);
+    OutgoingRequest::create(['method' => 'GET', 'url' => 'https://b.test/beta']);
+
+    expect($this->getJson('/tracing/api/outgoing?search=' . urlencode('%'))->assertOk()->json('meta.total'))->toBe(0)
+        ->and($this->getJson('/tracing/api/outgoing?payload=' . urlencode('%'))->assertOk()->json('meta.total'))->toBe(0)
+        ->and($this->getJson('/tracing/api/outgoing?search=alpha')->assertOk()->json('meta.total'))->toBe(1);
+});
+
+it('handles date filters without reaching the driver with raw input', function () {
+    // pgsql is the strict one: it rejected the raw string with "invalid input
+    // syntax for type timestamp" and the endpoint answered 500. Bad input is now
+    // refused before the query is built; good input must still bind correctly.
+    TracingRequest::create(['method' => 'GET', 'url' => '/a', 'response_status' => 200]);
+
+    $this->getJson('/tracing/api/requests?date_from=not-a-date')->assertStatus(422);
+
+    expect($this->getJson('/tracing/api/requests?date_from=' . now()->format('Y-m-d'))->assertOk()->json('meta.total'))->toBe(1)
+        ->and($this->getJson('/tracing/api/requests?date_to=' . now()->subDay()->format('Y-m-d'))->assertOk()->json('meta.total'))->toBe(0);
+});
+
 it('finds an incoming record by a tag substring in the standard search', function () {
     TracingRequest::create(['method' => 'GET', 'url' => '/alpha', 'response_status' => 200, 'tags' => ['env:staging']]);
     TracingRequest::create(['method' => 'GET', 'url' => '/beta', 'response_status' => 200, 'tags' => ['env:prod']]);

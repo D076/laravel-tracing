@@ -57,6 +57,7 @@ return [
         'queue_connection' => env('TRACING_OUTGOING_QUEUE_CONNECTION', null),
         'store_request_body' => (bool) env('TRACING_OUTGOING_STORE_REQUEST_BODY', true),
         'store_response_body' => (bool) env('TRACING_OUTGOING_STORE_RESPONSE_BODY', true),
+        // In bytes, like the inbound max_body_size — see its note below.
         'max_body_size' => (int) env('TRACING_OUTGOING_MAX_BODY_SIZE', 10000),
         'propagate_trace_id' => (bool) env('TRACING_OUTGOING_PROPAGATE_TRACE_ID', false),
         'masked_request_headers' => [
@@ -159,8 +160,16 @@ return [
     ],
 
     /*
-     | Максимальный размер тела запроса/ответа в символах.
-     | Данные сверх лимита заменяются сводкой об усечении.
+     | Maximum request/response body size, in BYTES — that is what storage, the
+     | column limit and the queue payload are denominated in. A body over the
+     | limit is cut on a character boundary and marked '...[truncated]';
+     | oversized body_params are replaced with a truncation summary instead.
+     |
+     | Multi-byte text costs proportionally more of this budget (a Cyrillic
+     | character is 2 bytes, an emoji 4) because it costs proportionally more
+     | disk. Raise the limit if you want more of such bodies kept.
+     |
+     | On MySQL the payload columns are `text`, capped at 65535 bytes.
      */
     'max_body_size' => (int) env('TRACING_MAX_BODY_SIZE', 10000),
 

@@ -5,6 +5,7 @@ namespace D076\Tracing\Middleware;
 use D076\Tracing\Context\TracingContext;
 use D076\Tracing\Context\TraceId;
 use D076\Tracing\Services\TracingService;
+use D076\Tracing\Support\BodyEncoding;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -34,12 +35,22 @@ final class TracingMiddleware
         $this->context->method = $request->method();
         $this->context->url = $request->fullUrl();
         $this->context->ipAddress = $request->ip();
-        $this->context->userAgent = $request->userAgent();
-        $this->context->queryParams = $request->query() ?: null;
-        $this->context->bodyParams = $this->captureBody($request);
-        $this->context->requestHeaders = $this->service->maskHeaders(
-            $request->headers->all(),
-            config('tracing.masked_request_headers', [])
+        // Parameters and headers arrive already parsed, so toUtf8() does not apply:
+        // a legacy client sending charset=windows-1251 puts its bytes inside
+        // individual values. Unnormalized they survive the write only as U+FFFD.
+        $charset = BodyEncoding::charsetFromContentType($request->header('Content-Type'));
+        $userAgent = $request->userAgent();
+        $this->context->userAgent = is_string($userAgent)
+            ? BodyEncoding::toUtf8Value($userAgent, $charset)
+            : null;
+        $this->context->queryParams = BodyEncoding::toUtf8Deep($request->query() ?: null, $charset);
+        $this->context->bodyParams = BodyEncoding::toUtf8Deep($this->captureBody($request), $charset);
+        $this->context->requestHeaders = BodyEncoding::toUtf8Deep(
+            $this->service->maskHeaders(
+                $request->headers->all(),
+                config('tracing.masked_request_headers', [])
+            ),
+            $charset,
         );
 
         return $next($request);

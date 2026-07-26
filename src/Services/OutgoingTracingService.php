@@ -93,7 +93,7 @@ final class OutgoingTracingService
             'request_headers' => $requestHeaders ?: null,
             'request_body' => config('tracing.outgoing.store_request_body', true)
                                     ? $this->maskBody(
-                                        $this->readBody($request, truncate: false),
+                                        $this->readBody($request),
                                         config('tracing.outgoing.masked_body_params', []),
                                         $request->getHeaderLine('Content-Type') ?: null,
                                     )
@@ -102,7 +102,7 @@ final class OutgoingTracingService
             'response_headers' => $response ? array_map(fn($v) => $v, $response->getHeaders()) : null,
             'response_body' => (config('tracing.outgoing.store_response_body', true) && $response !== null)
                                     ? $this->maskBody(
-                                        $this->readBody($response, truncate: false),
+                                        $this->readBody($response),
                                         config('tracing.outgoing.masked_response_body_params', []),
                                         $response->getHeaderLine('Content-Type') ?: null,
                                     )
@@ -150,11 +150,7 @@ final class OutgoingTracingService
             $body = http_build_query($parsed);
         }
 
-        $max = (int) config('tracing.outgoing.max_body_size', 10000);
-
-        return strlen($body) > $max
-            ? mb_strcut($body, 0, $max, 'UTF-8') . '...[truncated]'
-            : $body;
+        return $this->truncate($body);
     }
 
     /** @param list<string> $maskedKeys */
@@ -179,6 +175,17 @@ final class OutgoingTracingService
             }
         }
 
+        return $this->truncate($body);
+    }
+
+    /**
+     * Cuts to a BYTE budget (config outgoing.max_body_size) — that is what the
+     * storage, the column limit and the queue payload are actually denominated
+     * in. Uses mb_strcut rather than substr so the budget is honoured without
+     * splitting a multi-byte character, which a strict backend would reject.
+     */
+    private function truncate(string $body): string
+    {
         $max = (int) config('tracing.outgoing.max_body_size', 10000);
 
         return strlen($body) > $max
@@ -186,7 +193,12 @@ final class OutgoingTracingService
             : $body;
     }
 
-    private function readBody(RequestInterface|ResponseInterface $message, bool $truncate = true): ?string
+    /**
+     * The whole raw body, deliberately untruncated: at this point it is neither
+     * normalized to UTF-8 nor masked, and cutting before those steps would break
+     * the masking-before-truncation invariant. maskBody() truncates afterwards.
+     */
+    private function readBody(RequestInterface|ResponseInterface $message): ?string
     {
         try {
             $body = $message->getBody();
@@ -205,19 +217,7 @@ final class OutgoingTracingService
                 return null;
             }
 
-            if ($content === '') {
-                return null;
-            }
-
-            if (!$truncate) {
-                return $content;
-            }
-
-            $max = (int) config('tracing.outgoing.max_body_size', 10000);
-
-            return strlen($content) > $max
-                ? mb_strcut($content, 0, $max, 'UTF-8') . '...[truncated]'
-                : $content;
+            return $content === '' ? null : $content;
         } catch (Throwable) {
             return null;
         }

@@ -153,7 +153,22 @@ Sensitive values are replaced with `[REDACTED]` before being written to the data
 
 > **Form-encoded outbound bodies.** For `application/x-www-form-urlencoded` outbound bodies, masking is dispatched by `Content-Type` and the body is round-tripped through `parse_str` / `http_build_query`. Nested fields follow PHP's bracket syntax (`user[password]=...`) and are addressed via dot notation (`user.password`) in the masked-keys list. Bodies sent without an explicit `Content-Type` are treated as JSON for backward compatibility; bodies with unknown content types are not parsed and pass through unchanged (only truncated).
 
-> **Character encoding.** Bodies and JSON columns are normalized to UTF-8 before storage, so a strict backend (PostgreSQL with a UTF8 database) never rejects the `INSERT` over a stray byte. A body in a legacy charset declared via `Content-Type` (e.g. `charset=windows-1251`) is transcoded to UTF-8; an undeclared legacy charset is detected best-effort; a body that is neither valid UTF-8 nor decodable is replaced with a `[non-UTF-8 body, N bytes]` marker. Truncation uses `mb_strcut`, so it never splits a multi-byte character. For JSON columns (`body_params`, `query_params`, headers) a non-UTF-8 byte is substituted with U+FFFD rather than dropping the whole record.
+> **Character encoding.** Everything written to a record is valid UTF-8, so a strict backend (PostgreSQL with a UTF8 database) never rejects the `INSERT` over a stray byte and costs you the whole record. The rule is small, and the encoding is only ever taken from what the sender **declared** — nothing is inferred from the bytes:
+>
+> | Input | Stored as |
+> |---|---|
+> | Valid UTF-8 | unchanged |
+> | `Content-Type: …; charset=windows-1251` (or any charset that converts) | converted to UTF-8 |
+> | Anything else — a body | `[non-UTF-8 body, N bytes]` marker |
+> | Anything else — a parameter, header or user agent | left as-is, then U+FFFD via the storage backstop |
+>
+> This applies equally to bodies and to request parameters, headers and `user_agent`, which arrive already parsed and so carry the legacy bytes inside individual values.
+>
+> **Charset detection is deliberately not used.** It cannot separate text from binary: Windows-1251 leaves exactly one byte of 256 undefined, so a strict detector accepts a JPEG, a gzip stream or a raw HMAC and converts it into fluent-looking Cyrillic that was never in the payload. Fencing that off by media type and control-byte ratios was tried and leaked on high-byte-only blobs, which carry no control bytes at all. For an audit trail, fabricated text is a worse failure than visibly missing text.
+>
+> **The trade-off:** legacy text from a sender that declares no charset is not recovered — you get the marker, or U+FFFD in a parameter, rather than readable Russian. In practice a sender that knows it is not UTF-8 says so in `Content-Type`. Query parameters are the weak spot, since a `GET` carries no `Content-Type` at all; if that matters for an integration you control, have it declare a charset or send UTF-8.
+>
+> One consequence worth knowing: a charset parameter is believed even if the payload turns out to be binary, because a single-byte charset converts any byte sequence. A sender that mislabels a blob as `text/plain; charset=windows-1251` gets garbage text stored. The alternative is a media-type blocklist, i.e. guessing again.
 
 ## Async mode (queue)
 
@@ -248,6 +263,22 @@ GET /tracing/api/requests?payload=%2B79023396677&date_from=2026-07-01
 
 Percent-encode the term. A raw `+` in a query string decodes to a space — the UI handles this for you, but hand-written URLs must use `%2B`.
 
+Search terms are matched **literally**: `%` and `_` are escaped rather than treated as LIKE wildcards, so searching for `100%` finds `100%` and not every record.
+
+### Date filters
+
+`?date_from=` and `?date_to=` accept exactly three formats:
+
+| Format | Example | Meaning |
+|---|---|---|
+| `Y-m-d` | `2026-07-01` | whole day — `date_from` starts at `00:00:00`, `date_to` ends at `23:59:59` |
+| `Y-m-d H:i` | `2026-07-01 14:30` | that minute, seconds zeroed |
+| `Y-m-d H:i:s` | `2026-07-01 14:30:15` | that second |
+
+Anything else — a different format, a date that does not exist (`2026-02-31`), a relative string (`yesterday`), or an array (`?date_from[]=`) — is answered with **422** and a validation error naming the parameter. Rejecting is deliberate: the raw string previously reached the driver and PostgreSQL failed the request with `invalid input syntax for type timestamp`, while parsing leniently would have been worse still — `Carbon::parse()` reads `x` as a military timezone and silently shifts the window by hours, and treats a mistyped year as a valid date matching nothing, both answering `200` over a wrong result set. The web UI uses date inputs and always sends `Y-m-d`, so only hand-written API calls are affected.
+
+Values are interpreted in the application timezone, the same one `created_at` is written in. A local time that does not exist because of a DST jump is rejected as invalid.
+
 ### Case-insensitivity and non-ASCII terms
 
 Matching is case-insensitive, and that holds for non-ASCII text (Cyrillic, accented Latin, …) on **PostgreSQL and MySQL** — searching `Москва`, `москва`, or `МОСКВА` returns the same rows.
@@ -264,7 +295,9 @@ On **SQLite** it does not: SQLite's `lower()` only folds ASCII unless built with
 
 Some values are genuinely absent from storage; this is not a search bug:
 
-- **Truncated payloads.** Bodies larger than `max_body_size` (default `10000`) are cut and marked `...[truncated]`; anything past the cut is unsearchable. An oversized `body_params` is replaced wholesale with `{"_truncated": true, "_original_size": N}`.
+- **Truncated payloads.** Bodies larger than `max_body_size` (default `10000` **bytes**) are cut and marked `...[truncated]`; anything past the cut is unsearchable. An oversized `body_params` is replaced wholesale with `{"_truncated": true, "_original_size": N}`. The budget is in bytes because that is what storage, the column limit and the queue payload cost; the cut itself lands on a character boundary, never mid-character. Multi-byte text therefore keeps proportionally fewer characters — a Cyrillic body about half as many as a Latin one — because it occupies proportionally more disk. Raise the limit if you want more of such bodies kept.
+
+  On MySQL the payload columns are `text`, capped at **65535 bytes**, so a `max_body_size` near or above that will fail the write — and since a failed write is logged and swallowed, the whole trace record is lost, not just the body. Keep the limit comfortably under it, or widen the columns to `longtext` yourself; the package does not ship that migration, because altering these tables rebuilds them and blocks writes for as long as it takes.
 - **Skipped response bodies.** With `store_response_body_only_json=true` (the default) a non-JSON response body is never stored.
 - **Masked values.** Fields listed in `masked_body_params` / `masked_request_headers` / `masked_response_body_params` are stored as `[REDACTED]`. Adding, say, `phone` to a masked list makes that value permanently unsearchable — by design.
 

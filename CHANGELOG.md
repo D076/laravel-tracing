@@ -9,6 +9,29 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
 
 ## [Unreleased]
 
+### Fixed
+- Binary payloads (images, PDFs, gzip streams, raw digests) were converted into pseudo-Cyrillic garbage instead of being stored as the `[non-UTF-8 body, N bytes]` marker. The cause was charset **detection**: Windows-1251 leaves exactly **one** byte of 256 undefined, so `mb_detect_encoding(strict: true)` accepted almost any blob and `mb_convert_encoding` mangled it, roughly doubling its size on the way. Since outbound `store_response_body` defaults to `true` and — unlike the inbound side — has no JSON-only guard, every binary response was written as inflated noise up to `max_body_size`. Detection has been **removed** rather than fenced off; see *Changed* below.
+- Request parameters, headers and `user_agent` in a declared legacy charset were stored as U+FFFD instead of being converted. `BodyEncoding::toUtf8()` only applied to bodies, but these arrive already parsed, so a client sending `charset=windows-1251` put its bytes inside individual values, where only the `cleanForStorage()` backstop saw them — the record survived, its text did not. The new `toUtf8Deep()` converts values, nested values and keys using the charset the client declared.
+- `?date_from=` / `?date_to=` with an unparseable value returned HTTP 500. The raw string reached the driver and PostgreSQL answered `invalid input syntax for type timestamp`. The same happened for a well-formed `date_to` that included a time, because ` 23:59:59` was appended unconditionally. Both are fixed; the accepted formats are now explicit, see *Changed*.
+- `%` and `_` in a search term were treated as LIKE wildcards: `?search=%` matched **every** row (and, via `?payload=`, ran the expensive scan to do it), while `a_test` matched `a.test`. Terms are now escaped and matched literally, using `!` as the LIKE escape character because a literal backslash inside `ESCAPE '...'` is spelled differently on PostgreSQL and MySQL. Applies to `?search=`, `?payload=` and the `route_path` filter.
+- An oversized `body_params` was discarded at a third of its budget when it contained non-ASCII text. The size was measured on `json_encode()` **without** `JSON_UNESCAPED_UNICODE`, counting every Cyrillic letter as its 6-byte `\uXXXX` escape — while PostgreSQL and MySQL normalize those escapes away on write, so the escaped form was never what got stored. At the default limit a Cyrillic payload was dropped past roughly 3 300 bytes' worth of text instead of 10 000.
+
+### Changed
+- **Charset detection removed; encoding is now taken only from what the sender declared.** Previously an undeclared non-UTF-8 body was guessed at with `mb_detect_encoding`, and the guess was fenced off with a media-type list plus NUL and control-byte heuristics. The fence leaked on every review: high-byte-only blobs (signatures, encrypted chunks) carry no control bytes at all, a `multipart` body with a binary part slipped through, and a short body could be condemned over one stray byte. The rule is now:
+
+  | Input | Stored as |
+  |---|---|
+  | Valid UTF-8 | unchanged |
+  | Declared charset that converts | converted |
+  | Anything else — body | `[non-UTF-8 body, N bytes]` |
+  | Anything else — parameter, header, user agent | left as-is, then U+FFFD via the storage backstop |
+
+  **The trade-off:** legacy text from a sender that declares no charset is no longer recovered — it becomes the marker, or U+FFFD, where it previously came out as readable Russian. That is the price of never fabricating text, which for an audit trail is the worse failure: U+FFFD is visibly broken, while invented Cyrillic is indistinguishable from the truth. Query parameters are the weak spot, since a `GET` carries no `Content-Type`. A charset parameter is still believed even if the payload turns out to be binary — a single-byte charset converts anything — because the alternative is a media-type blocklist, i.e. guessing again.
+
+  The behaviour is pinned by property tests over text and binary corpora and randomized input rather than hand-picked byte strings; three earlier rounds of tests here passed only because their inputs happened to contain `0x98`, the one byte cp1251 rejects.
+- `?date_from=` / `?date_to=` now accept only `Y-m-d`, `Y-m-d H:i` and `Y-m-d H:i:s` and answer **422** on anything else, including a nonexistent date (`2026-02-31`) and an array (`?date_from[]=`). Parsing leniently instead would have traded the old 500 for a quieter failure: `Carbon::parse()` reads `x` as a military timezone and silently shifts the window by hours, and treats a mistyped year as a valid date that matches nothing — both answering 200 over a wrong result set. The web UI already sends `Y-m-d`, so only hand-written API calls are affected.
+- `max_body_size` and `outgoing.max_body_size` remain denominated in **bytes** — the config comment previously described them as characters, which was never what the code did. Bytes are what storage, the column limit and the queue payload actually cost, so the comment was corrected rather than the code. The cut still lands on a character boundary (`mb_strcut`) and never splits a multi-byte character. Multi-byte text consequently keeps proportionally fewer characters, because it occupies proportionally more disk; raise the limit if you want more of such bodies kept. Documented alongside the MySQL `text` ceiling of 65535 bytes, above which a write fails and — since the failure is logged and swallowed — costs the whole trace record.
+
 ## [0.4.0] - 2026-07-24
 
 ### Added

@@ -5,58 +5,109 @@ namespace D076\Tracing\Support;
 use ValueError;
 
 /**
- * Normalizes a raw HTTP body to valid UTF-8 before it is persisted.
+ * Guarantees that everything written to a trace record is valid UTF-8.
  *
  * A strict backend — Postgres with a UTF8 database — aborts the whole INSERT on
- * any byte sequence that is not valid UTF-8. A response in a legacy charset
- * (Windows-1251 and friends) would therefore be lost together with its error
- * log noise. This converts such a body to UTF-8; when the charset cannot be
- * determined it substitutes a short marker so the record is still stored rather
- * than dropped.
+ * any byte sequence that is not valid UTF-8, so a single stray byte used to cost
+ * the entire record. That, and not charset recovery, is the problem this solves.
+ *
+ * The rule is deliberately small, and it never infers an encoding from the bytes:
+ *
+ *   valid UTF-8                    -> unchanged
+ *   charset declared, and converts -> converted
+ *   anything else                  -> marker (body) / left as-is (parameter value)
+ *
+ * Charset DETECTION was tried and removed. It cannot separate text from binary:
+ * Windows-1251 leaves exactly one byte of 256 undefined, so a strict detector
+ * accepts a JPEG, a gzip stream or a raw HMAC and transcodes it into fluent-
+ * looking Cyrillic that never existed. Successive attempts to fence that off by
+ * media type, NUL bytes and control-character ratios each leaked somewhere else
+ * — high-byte-only blobs carry no control bytes at all. In an audit trail,
+ * fabricated text is worse than visibly missing text, so the guessing is gone.
+ *
+ * The price: legacy text from a sender that declares no charset is not
+ * recovered. It becomes a marker, or U+FFFD inside a parameter. In practice a
+ * sender that knows it is not UTF-8 says so in Content-Type.
  *
  * Must run BEFORE masking and truncation: json_decode/parse_str only understand
- * UTF-8, and truncation assumes a valid-UTF-8 input (see mb_strcut call sites).
+ * UTF-8, and truncation assumes valid UTF-8 input (see the mb_strcut call sites).
  */
 final class BodyEncoding
 {
-    /**
-     * Charsets tried, in order, when the body is not UTF-8 and the server did
-     * not declare a usable charset. Deliberately small and strict: a genuine
-     * binary blob should fall through to the marker, not be silently mangled
-     * into Latin-1 (which accepts every byte and would defeat the marker).
-     */
-    private const DETECT_ORDER = ['UTF-8', 'Windows-1251'];
-
     public static function toUtf8(string $content, ?string $contentType = null): string
     {
         if (mb_check_encoding($content, 'UTF-8')) {
             return $content;
         }
 
-        // 1. Trust the charset the server declared in Content-Type.
-        $declared = self::charsetFromContentType($contentType);
+        return self::convertDeclared($content, self::charsetFromContentType($contentType))
+            ?? '[non-UTF-8 body, ' . strlen($content) . ' bytes]';
+    }
 
-        if ($declared !== null && strtoupper($declared) !== 'UTF-8') {
-            $converted = self::convert($content, $declared);
-
-            if ($converted !== null) {
-                return $converted;
-            }
+    /**
+     * Normalize every string in a decoded parameter set (form fields, query
+     * parameters, headers) to UTF-8, keys included.
+     *
+     * Counterpart of {@see toUtf8()} for data that reaches us already parsed into
+     * an array, where there is no single body to convert: a legacy client posting
+     * `application/x-www-form-urlencoded; charset=windows-1251` puts its bytes
+     * inside individual values.
+     *
+     * Note: two distinct byte keys can convert to the same string, in which case
+     * the later one wins and the earlier is dropped. Contrived enough that
+     * de-duplicating would cost more clarity than it buys, but it is silent.
+     *
+     * @param  array<mixed>|null  $data
+     * @param  string|null  $charset  Charset declared by the client, if any.
+     * @return array<mixed>|null
+     */
+    public static function toUtf8Deep(?array $data, ?string $charset = null): ?array
+    {
+        if ($data === null) {
+            return null;
         }
 
-        // 2. Best-effort detection for undeclared legacy text.
-        $detected = mb_detect_encoding($content, self::DETECT_ORDER, true);
+        $result = [];
 
-        if ($detected !== false && $detected !== 'UTF-8') {
-            $converted = self::convert($content, $detected);
+        foreach ($data as $key => $value) {
+            $key = is_string($key) ? self::toUtf8Value($key, $charset) : $key;
 
-            if ($converted !== null) {
-                return $converted;
-            }
+            $result[$key] = match (true) {
+                is_array($value) => self::toUtf8Deep($value, $charset),
+                is_string($value) => self::toUtf8Value($value, $charset),
+                default => $value,
+            };
         }
 
-        // 3. Undecodable / binary — store a marker, never raw bytes.
-        return '[non-UTF-8 body, ' . strlen($content) . ' bytes]';
+        return $result;
+    }
+
+    /**
+     * A single already-parsed value (parameter, header, user agent).
+     *
+     * Undecodable values are returned untouched rather than markered: a parameter
+     * is not a body, and {@see cleanForStorage()} already guarantees the write
+     * succeeds by substituting U+FFFD.
+     */
+    public static function toUtf8Value(string $value, ?string $charset = null): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return self::convertDeclared($value, $charset) ?? $value;
+    }
+
+    /** The charset parameter of a Content-Type header, if it carries one. */
+    public static function charsetFromContentType(?string $contentType): ?string
+    {
+        if ($contentType === null) {
+            return null;
+        }
+
+        return preg_match('/charset\s*=\s*["\']?([\w-]+)/i', $contentType, $m) === 1
+            ? $m[1]
+            : null;
     }
 
     /**
@@ -83,27 +134,23 @@ final class BodyEncoding
         return $decoded;
     }
 
-    private static function convert(string $content, string $fromCharset): ?string
+    /** Converted content, or null when no usable charset was declared. */
+    private static function convertDeclared(string $content, ?string $charset): ?string
     {
+        // A charset of UTF-8 on content that failed mb_check_encoding is simply
+        // wrong, and converting UTF-8 to itself would not repair it.
+        if ($charset === null || strtoupper($charset) === 'UTF-8') {
+            return null;
+        }
+
         try {
-            $converted = mb_convert_encoding($content, 'UTF-8', $fromCharset);
+            $converted = mb_convert_encoding($content, 'UTF-8', $charset);
         } catch (ValueError) {
             return null; // unknown / unsupported charset label
         }
 
         return ($converted !== false && mb_check_encoding($converted, 'UTF-8'))
             ? $converted
-            : null;
-    }
-
-    private static function charsetFromContentType(?string $contentType): ?string
-    {
-        if ($contentType === null) {
-            return null;
-        }
-
-        return preg_match('/charset\s*=\s*["\']?([\w-]+)/i', $contentType, $m) === 1
-            ? $m[1]
             : null;
     }
 }

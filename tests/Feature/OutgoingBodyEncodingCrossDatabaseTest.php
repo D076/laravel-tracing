@@ -72,14 +72,19 @@ it('persists a Windows-1251 response after the service normalizes it to UTF-8', 
     expect(OutgoingRequest::query()->value('response_body'))->toContain('Москва');
 });
 
-it('persists a binary response as a marker instead of crashing', function () {
+it('persists a binary response as a marker instead of crashing', function (string $label, string $binary, string $contentType) {
+    // Real formats, not bytes picked to defeat charset detection: cp1251 leaves
+    // only 0x98 undefined, so an input engineered to contain it proved nothing
+    // about the JPEGs and gzip streams that actually flow through the middleware.
     $service = new D076\Tracing\Services\OutgoingTracingService(new D076\Tracing\Context\Tags());
-    $binary = random_bytes(64) . "\x98\x98\x98";
 
     $normalized = (new ReflectionMethod($service, 'maskBody'))
-        ->invoke($service, $binary, [], 'application/octet-stream');
+        ->invoke($service, $binary, [], $contentType);
 
     persistBody($normalized);
 
     expect(OutgoingRequest::query()->value('response_body'))->toStartWith('[non-UTF-8 body,');
-});
+})->with([
+    ['jpeg', "\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\x10\x20\x30\x40", 'image/jpeg'],
+    ['gzip', "\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\xbb\x30\xe7\x42\xc3\x85\x1d\x17\x36", 'application/octet-stream'],
+]);

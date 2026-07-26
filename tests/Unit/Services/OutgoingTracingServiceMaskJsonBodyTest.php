@@ -69,6 +69,18 @@ describe('OutgoingTracingService::maskJsonBody', function () {
             ->and(mb_check_encoding($result, 'UTF-8'))->toBeTrue();
     });
 
+    it('budgets max_body_size in bytes and never exceeds it', function () {
+        config()->set('tracing.outgoing.max_body_size', 101);
+
+        // 101 is deliberately odd: a 2-byte character cannot end exactly on it,
+        // so the cut must fall back to 100 rather than overshoot or split.
+        $kept = fn (string $s) => str_replace('...[truncated]', '', (string) invokeMaskJsonBody($this->service, $s, []));
+
+        expect(strlen($kept(str_repeat('я', 200))))->toBe(100)
+            ->and(strlen($kept(str_repeat('a', 200))))->toBe(101)
+            ->and(mb_check_encoding($kept(str_repeat('я', 200)), 'UTF-8'))->toBeTrue();
+    });
+
     it('returns null when the body is null', function () {
         expect(invokeMaskJsonBody($this->service, null, ['password']))->toBeNull();
     });

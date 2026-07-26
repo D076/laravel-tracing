@@ -139,8 +139,12 @@ final class TracingService
 
         // JSON_INVALID_UTF8_SUBSTITUTE: a legacy-encoded body param must not throw
         // here and drop the whole record — cleanForStorage() substitutes it later.
-        $json = json_encode($data, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
-        $maxSize = config('tracing.max_body_size', 10000);
+        // JSON_UNESCAPED_UNICODE: without it every non-ASCII character is measured
+        // as its 6-byte \uXXXX escape, so a Cyrillic payload was discarded at a
+        // third of the budget a Latin one gets — and pgsql/mysql normalize the
+        // escapes away on write anyway, so the escaped form is not what is stored.
+        $json = json_encode($data, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE);
+        $maxSize = (int) config('tracing.max_body_size', 10000);
 
         if (strlen($json) > $maxSize) {
             return ['_truncated' => true, '_original_size' => strlen($json)];
@@ -173,9 +177,15 @@ final class TracingService
         return $this->truncateString($content);
     }
 
+    /**
+     * Cuts to a BYTE budget (config max_body_size) — that is what the storage,
+     * the column limit and the queue payload are actually denominated in. Uses
+     * mb_strcut rather than substr so the budget is honoured without splitting a
+     * multi-byte character, which a strict backend would reject.
+     */
     private function truncateString(string $content): string
     {
-        $maxSize = config('tracing.max_body_size', 10000);
+        $maxSize = (int) config('tracing.max_body_size', 10000);
 
         if (strlen($content) > $maxSize) {
             return mb_strcut($content, 0, $maxSize, 'UTF-8') . '...[truncated]';

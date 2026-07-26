@@ -120,7 +120,7 @@ Ties the record to the inbound request via `TraceId::get()` → the `trace_id` c
 
 ### `Services/TracingService` / `OutgoingTracingService`
 
-Build the payload, normalize bodies to UTF-8 (`Support/BodyEncoding`), apply header and body masking (request and response), truncate (UTF-8-safe via `mb_strcut`), substitute any residual non-UTF-8 bytes in JSON columns (`cleanForStorage`), and either persist synchronously (`database`) or dispatch a job (`queue`). UTF-8 normalization guarantees a strict backend (PostgreSQL) never rejects the write over an invalid byte sequence.
+Build the payload, normalize bodies to UTF-8 (`Support/BodyEncoding`), apply header and body masking (request and response), truncate to the byte budget on a character boundary (`mb_strcut`), substitute any residual non-UTF-8 bytes in JSON columns (`cleanForStorage`), and either persist synchronously (`database`) or dispatch a job (`queue`). UTF-8 normalization guarantees a strict backend (PostgreSQL) never rejects the write over an invalid byte sequence. Parameters, headers and `user_agent` are normalized earlier, in `TracingMiddleware`, where the request is still available to read the declared charset from.
 
 ### `Providers/TracingServiceProvider`
 
