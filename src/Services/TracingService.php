@@ -68,7 +68,7 @@ final class TracingService
     {
         $responseBody = null;
 
-        if (config('tracing.store_response_body', false) && !($response instanceof StreamedResponse)) {
+        if (config('tracing.store_response_body') && !($response instanceof StreamedResponse)) {
             $content = $response->getContent();
             if ($content !== false && $content !== '') {
                 $responseBody = $this->maskResponseBody($content, $response->headers->get('Content-Type'));
@@ -85,12 +85,12 @@ final class TracingService
             'request_headers' => $ctx->requestHeaders,
             'query_params' => $ctx->queryParams,
             'body_params' => $this->truncateJson(
-                $this->maskBodyParams($ctx->bodyParams, config('tracing.masked_body_params', []))
+                $this->maskBodyParams($ctx->bodyParams, config('tracing.masked_body_params'))
             ),
             'response_status' => $response->getStatusCode(),
             'response_headers' => $this->maskHeaders(
                 $response->headers->all(),
-                config('tracing.masked_response_headers', [])
+                config('tracing.masked_response_headers')
             ),
             'response_body' => $responseBody,
             'authenticatable_id' => $ctx->authenticatableId,
@@ -133,8 +133,13 @@ final class TracingService
      */
     private function truncateJson(?array $data): ?array
     {
-        if ($data === null) {
-            return null;
+        $maxSize = (int) config('tracing.max_body_size');
+
+        // A non-positive budget disables truncation — and with it the encode
+        // below, which exists only to measure. Without this guard a missing
+        // config key (0) replaced every payload with the truncation summary.
+        if ($data === null || $maxSize <= 0) {
+            return $data;
         }
 
         // JSON_INVALID_UTF8_SUBSTITUTE: a legacy-encoded body param must not throw
@@ -144,13 +149,10 @@ final class TracingService
         // third of the budget a Latin one gets — and pgsql/mysql normalize the
         // escapes away on write anyway, so the escaped form is not what is stored.
         $json = json_encode($data, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE);
-        $maxSize = (int) config('tracing.max_body_size', 10000);
 
-        if (strlen($json) > $maxSize) {
-            return ['_truncated' => true, '_original_size' => strlen($json)];
-        }
-
-        return $data;
+        return strlen($json) > $maxSize
+            ? ['_truncated' => true, '_original_size' => strlen($json)]
+            : $data;
     }
 
     private function maskResponseBody(string $content, ?string $contentType = null): ?string
@@ -158,39 +160,25 @@ final class TracingService
         // Normalize legacy charsets to UTF-8 before JSON parsing/truncation.
         $content = BodyEncoding::toUtf8($content, $contentType);
 
-        if (json_validate($content)) {
-            $decoded = json_decode($content, true);
+        // json_decode is the same parser json_validate runs, so asking it for the
+        // value and reading the error tells us both things in one pass over what
+        // may be megabytes.
+        $decoded = json_decode($content, true);
 
+        if (json_last_error() === JSON_ERROR_NONE) {
             if (is_array($decoded)) {
                 $decoded = $this->maskBodyParams(
                     $decoded,
-                    config('tracing.masked_response_body_params', []),
+                    config('tracing.masked_response_body_params'),
                 );
             }
 
             $encoded = json_encode($decoded, JSON_UNESCAPED_UNICODE);
             $content = $encoded !== false ? $encoded : $content;
-        } elseif (config('tracing.store_response_body_only_json', true)) {
+        } elseif (config('tracing.store_response_body_only_json')) {
             return null;
         }
 
-        return $this->truncateString($content);
-    }
-
-    /**
-     * Cuts to a BYTE budget (config max_body_size) — that is what the storage,
-     * the column limit and the queue payload are actually denominated in. Uses
-     * mb_strcut rather than substr so the budget is honoured without splitting a
-     * multi-byte character, which a strict backend would reject.
-     */
-    private function truncateString(string $content): string
-    {
-        $maxSize = (int) config('tracing.max_body_size', 10000);
-
-        if (strlen($content) > $maxSize) {
-            return mb_strcut($content, 0, $maxSize, 'UTF-8') . '...[truncated]';
-        }
-
-        return $content;
+        return BodyEncoding::truncateBytes($content, (int) config('tracing.max_body_size'));
     }
 }

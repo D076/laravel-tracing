@@ -68,6 +68,7 @@ return [
         'store_request_body' => (bool) env('TRACING_OUTGOING_STORE_REQUEST_BODY', true),
         'store_response_body' => (bool) env('TRACING_OUTGOING_STORE_RESPONSE_BODY', true),
         // In bytes, like the inbound max_body_size — see its note below.
+        // 0 (или null) — усечение выключено.
         'max_body_size' => (int) env('TRACING_OUTGOING_MAX_BODY_SIZE', 10000),
         'propagate_trace_id' => (bool) env('TRACING_OUTGOING_PROPAGATE_TRACE_ID', false),
         'masked_request_headers' => [
@@ -178,6 +179,8 @@ return [
      | Multi-byte text costs proportionally more of this budget (a Cyrillic
      | character is 2 bytes, an emoji 4) because it costs proportionally more
      | disk. Raise the limit if you want more of such bodies kept.
+     |
+     | 0 (или null) — усечение выключено, тело сохраняется целиком.
      |
      | On MySQL the payload columns are `text`, capped at 65535 bytes.
      */

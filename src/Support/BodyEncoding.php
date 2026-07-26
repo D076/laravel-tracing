@@ -2,6 +2,7 @@
 
 namespace D076\Tracing\Support;
 
+use Symfony\Component\HttpFoundation\HeaderUtils;
 use ValueError;
 
 /**
@@ -30,17 +31,13 @@ use ValueError;
  * sender that knows it is not UTF-8 says so in Content-Type.
  *
  * Must run BEFORE masking and truncation: json_decode/parse_str only understand
- * UTF-8, and truncation assumes valid UTF-8 input (see the mb_strcut call sites).
+ * UTF-8, and truncation assumes valid UTF-8 input (see {@see truncateBytes()}).
  */
 final class BodyEncoding
 {
     public static function toUtf8(string $content, ?string $contentType = null): string
     {
-        if (mb_check_encoding($content, 'UTF-8')) {
-            return $content;
-        }
-
-        return self::convertDeclared($content, self::charsetFromContentType($contentType))
+        return self::asUtf8($content, self::charsetFromContentType($contentType))
             ?? '[non-UTF-8 body, ' . strlen($content) . ' bytes]';
     }
 
@@ -63,8 +60,11 @@ final class BodyEncoding
      */
     public static function toUtf8Deep(?array $data, ?string $charset = null): ?array
     {
-        if ($data === null) {
-            return null;
+        // Without a usable charset there is nothing to convert to, so the walk
+        // would rebuild the array element by element and hand back an equal one
+        // — on every traced request, and losing copy-on-write with the Request.
+        if ($data === null || !self::isConvertible($charset)) {
+            return $data;
         }
 
         $result = [];
@@ -91,11 +91,7 @@ final class BodyEncoding
      */
     public static function toUtf8Value(string $value, ?string $charset = null): string
     {
-        if (mb_check_encoding($value, 'UTF-8')) {
-            return $value;
-        }
-
-        return self::convertDeclared($value, $charset) ?? $value;
+        return self::asUtf8($value, $charset) ?? $value;
     }
 
     /** The charset parameter of a Content-Type header, if it carries one. */
@@ -105,9 +101,12 @@ final class BodyEncoding
             return null;
         }
 
-        return preg_match('/charset\s*=\s*["\']?([\w-]+)/i', $contentType, $m) === 1
-            ? $m[1]
-            : null;
+        // HeaderUtils rather than a charset= regex: it implements the real
+        // parameter grammar, so a charset= inside another parameter's quoted
+        // value (a multipart boundary, say) is not mistaken for the body's.
+        $charset = HeaderUtils::combine(HeaderUtils::split($contentType, ';='))['charset'] ?? null;
+
+        return is_string($charset) && $charset !== '' ? $charset : null;
     }
 
     /**
@@ -122,7 +121,16 @@ final class BodyEncoding
      */
     public static function cleanForStorage(array $data): array
     {
-        $json = json_encode($data, JSON_INVALID_UTF8_SUBSTITUTE);
+        // Invalid UTF-8 is exactly what makes a plain encode fail, so a payload
+        // that encodes is already clean and is handed back untouched — only the
+        // rare bad one pays for the substituting encode and the decode back.
+        // JSON_UNESCAPED_UNICODE keeps that probe from inflating every non-ASCII
+        // character into a 6-byte \uXXXX escape in a string we then throw away.
+        if (json_encode($data, JSON_UNESCAPED_UNICODE) !== false) {
+            return $data;
+        }
+
+        $json = json_encode($data, JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE);
 
         if ($json === false) {
             return $data;
@@ -134,12 +142,31 @@ final class BodyEncoding
         return $decoded;
     }
 
-    /** Converted content, or null when no usable charset was declared. */
-    private static function convertDeclared(string $content, ?string $charset): ?string
+    /**
+     * Cuts to a BYTE budget — that is what the storage, the column limit and the
+     * queue payload are actually denominated in. Uses mb_strcut rather than
+     * substr so the budget is honoured without splitting a multi-byte character,
+     * which a strict backend would reject. Must run AFTER masking.
+     *
+     * A non-positive budget means "do not truncate", not "keep nothing": a
+     * missing config key arrives here as 0 and would otherwise reduce every
+     * stored body to the truncation marker alone.
+     */
+    public static function truncateBytes(string $content, int $maxBytes): string
     {
-        // A charset of UTF-8 on content that failed mb_check_encoding is simply
-        // wrong, and converting UTF-8 to itself would not repair it.
-        if ($charset === null || strtoupper($charset) === 'UTF-8') {
+        return $maxBytes > 0 && strlen($content) > $maxBytes
+            ? mb_strcut($content, 0, $maxBytes, 'UTF-8') . '...[truncated]'
+            : $content;
+    }
+
+    /** Content as valid UTF-8, or null when it cannot be produced. */
+    private static function asUtf8(string $content, ?string $charset): ?string
+    {
+        if (mb_check_encoding($content, 'UTF-8')) {
+            return $content;
+        }
+
+        if (!self::isConvertible($charset)) {
             return null;
         }
 
@@ -152,5 +179,15 @@ final class BodyEncoding
         return ($converted !== false && mb_check_encoding($converted, 'UTF-8'))
             ? $converted
             : null;
+    }
+
+    /**
+     * A charset that could recover something. A charset of UTF-8 on content that
+     * failed mb_check_encoding is simply wrong, and converting UTF-8 to itself
+     * would not repair it.
+     */
+    private static function isConvertible(?string $charset): bool
+    {
+        return $charset !== null && strtoupper($charset) !== 'UTF-8';
     }
 }

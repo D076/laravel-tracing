@@ -36,7 +36,7 @@ final class OutgoingTracingMiddleware
         return function (RequestInterface $request, array $options) use ($handler) {
             $ignored = $this->service->isIgnored((string) $request->getUri());
 
-            if (config('tracing.outgoing.propagate_trace_id', false) && !$ignored) {
+            if (config('tracing.outgoing.propagate_trace_id') && !$ignored) {
                 $request = $request->withHeader('X-Trace-Id', $this->traceId->get());
             }
 

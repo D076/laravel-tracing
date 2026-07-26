@@ -2,7 +2,7 @@
 
 use D076\Tracing\Services\OutgoingTracingService;
 
-function invokeMaskJsonBody(OutgoingTracingService $service, ?string $body, array $maskedKeys): ?string
+function invokeMaskJsonBody(OutgoingTracingService $service, string $body, array $maskedKeys): string
 {
     return (new ReflectionMethod($service, 'maskJsonBody'))->invoke($service, $body, $maskedKeys);
 }
@@ -81,7 +81,12 @@ describe('OutgoingTracingService::maskJsonBody', function () {
             ->and(mb_check_encoding($kept(str_repeat('я', 200)), 'UTF-8'))->toBeTrue();
     });
 
-    it('returns null when the body is null', function () {
-        expect(invokeMaskJsonBody($this->service, null, ['password']))->toBeNull();
+    // The null case is guarded one level up, in maskBody(), so that is where it
+    // is asserted — maskJsonBody() itself is only ever reached with a string.
+    it('returns null when the body is null, before reaching maskJsonBody', function () {
+        $result = (new ReflectionMethod($this->service, 'maskBody'))
+            ->invoke($this->service, null, ['password'], 'application/json');
+
+        expect($result)->toBeNull();
     });
 });

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 While the package is on `0.x`, minor versions may contain breaking changes; patch versions never do.
 
-## [Unreleased]
+## [0.5.0] - 2026-07-26
 
 ### Added
 - `only_paths` — an inbound route **allowlist**, the mirror image of `ignore_paths`. Empty (the default) keeps today's behaviour: everything is traced except `ignore_paths`. Non-empty flips the rule and traces **only** matching routes, which makes "audit the API and nothing else" a two-line config change instead of an ever-growing exclusion list. `ignore_paths` is still applied and subtracted from the allowlist, so `only_paths => ['api/*']` with `ignore_paths => ['api/health']` traces the API minus its health check. Same `*` wildcard and same `Request::is()` matching as `ignore_paths`; as with an ignored path, being outside the allowlist suppresses only the recording — `trace_id`, `Context` propagation and the `X-Trace-Id` header are unaffected.
@@ -34,6 +34,8 @@ While the package is on `0.x`, minor versions may contain breaking changes; patc
   The behaviour is pinned by property tests over text and binary corpora and randomized input rather than hand-picked byte strings; three earlier rounds of tests here passed only because their inputs happened to contain `0x98`, the one byte cp1251 rejects.
 - `?date_from=` / `?date_to=` now accept only `Y-m-d`, `Y-m-d H:i` and `Y-m-d H:i:s` and answer **422** on anything else, including a nonexistent date (`2026-02-31`) and an array (`?date_from[]=`). Parsing leniently instead would have traded the old 500 for a quieter failure: `Carbon::parse()` reads `x` as a military timezone and silently shifts the window by hours, and treats a mistyped year as a valid date that matches nothing — both answering 200 over a wrong result set. The web UI already sends `Y-m-d`, so only hand-written API calls are affected.
 - `max_body_size` and `outgoing.max_body_size` remain denominated in **bytes** — the config comment previously described them as characters, which was never what the code did. Bytes are what storage, the column limit and the queue payload actually cost, so the comment was corrected rather than the code. The cut still lands on a character boundary (`mb_strcut`) and never splits a multi-byte character. Multi-byte text consequently keeps proportionally fewer characters, because it occupies proportionally more disk; raise the limit if you want more of such bodies kept. Documented alongside the MySQL `text` ceiling of 65535 bytes, above which a write fails and — since the failure is logged and swallowed — costs the whole trace record.
+- A **non-positive** `max_body_size` / `outgoing.max_body_size` now means *do not truncate* rather than *keep nothing*. `0` (or `null`) previously put every body over budget: response bodies were stored as the bare `...[truncated]` marker and every `body_params` was replaced with `{"_truncated": true, "_original_size": N}`. That is also what a config key missing from an incomplete published file casts to, so the failure mode was silent data loss on a misconfiguration. `0` is now the documented way to store bodies whole — mind the MySQL column ceiling above before using it.
+- Defaults are no longer duplicated as the second argument of `config()` calls in `src/`; the published config file is the single source of truth for them. Two of those code-side defaults contradicted the shipped config (`store_response_body` read as `false` against a config of `true`, both `retention_days` as `0` against `30`) and were dead — `mergeConfigFrom()` means the keys always exist — but they read as the real defaults.
 
 ## [0.4.0] - 2026-07-24
 
@@ -149,7 +151,8 @@ Initial release.
 - Retention via `php artisan model:prune` (`tracing.retention_days`, default 30).
 - Cross-database SQL compatibility: PostgreSQL, MySQL, SQLite.
 
-[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/d076/laravel-tracing/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/d076/laravel-tracing/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/d076/laravel-tracing/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/d076/laravel-tracing/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/d076/laravel-tracing/compare/v0.3.1...v0.3.2

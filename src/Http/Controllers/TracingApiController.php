@@ -21,6 +21,12 @@ final class TracingApiController extends Controller
      */
     private const LIKE_ESCAPE = '!';
 
+    /**
+     * The clause every LIKE built by {@see likeContains()} must carry — without
+     * it the escapes it inserts are matched as literal '!' characters, silently.
+     */
+    private const LIKE_ESCAPE_SQL = " escape '" . self::LIKE_ESCAPE . "'";
+
     /** Accepted ?date_from / ?date_to formats. A bare date bounds the whole day. */
     private const DATE_FORMATS = ['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s'];
 
@@ -51,7 +57,7 @@ final class TracingApiController extends Controller
         }
 
         if (($routePath = $this->stringQuery($request, 'route_path')) !== null) {
-            $query->whereRaw("lower(route_path) like ? escape '" . self::LIKE_ESCAPE . "'", [$this->likeContains($routePath)]);
+            $query->whereRaw('lower(route_path) like ?' . self::LIKE_ESCAPE_SQL, [$this->likeContains($routePath)]);
         }
 
         $this->applyDateRange($query, $request);
@@ -337,9 +343,8 @@ final class TracingApiController extends Controller
         $conn = $query->getConnection();
         $driver = $conn->getDriverName();
         $needle = $this->likeContains($term);
-        $escape = " escape '" . self::LIKE_ESCAPE . "'";
 
-        $query->where(function ($q) use ($isUuid, $term, $uuidColumns, $textColumns, $jsonColumns, $driver, $needle, $escape): void {
+        $query->where(function ($q) use ($isUuid, $term, $uuidColumns, $textColumns, $jsonColumns, $driver, $needle): void {
             if ($isUuid) {
                 foreach ($uuidColumns as $column) {
                     $q->orWhere($column, $term);
@@ -347,11 +352,14 @@ final class TracingApiController extends Controller
             }
 
             foreach ($textColumns as $column) {
-                $q->orWhereRaw("lower({$column}) like ?{$escape}", [$needle]);
+                $q->orWhereRaw("lower({$column}) like ?" . self::LIKE_ESCAPE_SQL, [$needle]);
             }
 
             foreach ($jsonColumns as $column) {
-                $q->orWhereRaw('lower(' . $this->jsonTextExpression($column, $driver) . ") like ?{$escape}", [$needle]);
+                $q->orWhereRaw(
+                    'lower(' . $this->jsonTextExpression($column, $driver) . ') like ?' . self::LIKE_ESCAPE_SQL,
+                    [$needle],
+                );
             }
         });
     }
@@ -410,33 +418,40 @@ final class TracingApiController extends Controller
 
         // An array reaches here as ?date_from[]=... — rejected rather than
         // dropped, or the endpoint would answer 200 over an unfiltered set.
-        $value = is_string($raw) ? $raw : null;
+        if (!is_string($raw)) {
+            $this->rejectDate($key);
+        }
 
-        foreach ($value === null ? [] : self::DATE_FORMATS as $format) {
+        foreach (self::DATE_FORMATS as $format) {
             try {
-                $date = Carbon::rawCreateFromFormat($format, $value);
+                // The '!' prefix zeroes every field the format leaves
+                // unspecified; without it they are taken from "now" and the same
+                // query would mean something different every minute.
+                $date = Carbon::rawCreateFromFormat('!' . $format, $raw);
             } catch (InvalidFormatException) {
                 continue;
             }
 
             // createFromFormat accepts overflow ('2026-02-31' rolls into March),
             // so round-tripping is what actually validates the value.
-            if ($date->format($format) !== $value) {
+            if ($date->format($format) !== $raw) {
                 continue;
             }
 
-            // Whatever the format leaves unspecified is taken from "now", which
-            // would make the same query mean something different every minute.
-            return match ($format) {
-                'Y-m-d' => $endOfDay ? $date->endOfDay() : $date->startOfDay(),
-                'Y-m-d H:i' => $date->setSecond(0),
-                default => $date,
-            };
+            return $endOfDay && $format === 'Y-m-d' ? $date->endOfDay() : $date;
         }
 
+        $this->rejectDate($key);
+    }
+
+    /** @return never */
+    private function rejectDate(string $key): void
+    {
+        $formats = implode(', ', self::DATE_FORMATS);
+
         throw new HttpResponseException(response()->json([
-            'message' => "Invalid {$key}: expected one of " . implode(', ', self::DATE_FORMATS) . ".",
-            'errors' => [$key => ['The ' . $key . ' field must match one of ' . implode(', ', self::DATE_FORMATS) . '.']],
+            'message' => "Invalid {$key}: expected one of {$formats}.",
+            'errors' => [$key => ["The {$key} field must match one of {$formats}."]],
         ], 422));
     }
 

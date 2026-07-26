@@ -58,7 +58,7 @@ final class TracingRequest extends Model
     /** @return Builder<self> */
     public function prunable(): Builder
     {
-        $days = (int) config('tracing.retention_days', 0);
+        $days = (int) config('tracing.retention_days');
 
         if ($days <= 0) {
             return self::query()->whereRaw('0 = 1');

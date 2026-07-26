@@ -56,7 +56,7 @@ final class TracingServiceProvider extends ServiceProvider
                     Throwable $e,
                     Request $request,
                 ) use ($app): Response {
-                    if (config('tracing.enabled', true)) {
+                    if (config('tracing.enabled')) {
                         $app->make(TracingContext::class)->exception = $e;
                     }
 
@@ -80,7 +80,7 @@ final class TracingServiceProvider extends ServiceProvider
         // Мастер-выключатель. TRACING_ENABLED=false полностью глушит рантайм пакета:
         // ни middleware/Context (trace_id перестаёт течь в логи приложения), ни записи
         // исходящих, ни UI-роутов. Всё, что ниже, — рантайм-поведение.
-        if (!config('tracing.enabled', true)) {
+        if (!config('tracing.enabled')) {
             return;
         }
 
@@ -93,13 +93,13 @@ final class TracingServiceProvider extends ServiceProvider
 
         // Динамически добавляем UI-путь в ignore_paths на случай,
         // если пользователь сменил TRACING_UI_PATH
-        $uiPath = config('tracing.ui.path', 'tracing');
+        $uiPath = config('tracing.ui.path');
         config(['tracing.ignore_paths' => array_unique(array_merge(
-            config('tracing.ignore_paths', []),
+            config('tracing.ignore_paths'),
             [$uiPath, $uiPath . '/*'],
         ))]);
 
-        if (config('tracing.outgoing.enabled', true)) {
+        if (config('tracing.outgoing.enabled')) {
             // Middleware — только инъекция X-Trace-Id (мутация запроса).
             Http::globalMiddleware($this->app->make(OutgoingTracingMiddleware::class));
 
@@ -109,7 +109,7 @@ final class TracingServiceProvider extends ServiceProvider
             Event::listen(ConnectionFailed::class, [RecordOutgoingRequest::class, 'handleConnectionFailed']);
         }
 
-        if (config('tracing.ui.enabled', true)) {
+        if (config('tracing.ui.enabled')) {
             $this->bootUi();
         }
     }
@@ -128,8 +128,8 @@ final class TracingServiceProvider extends ServiceProvider
         $this->app->make(Router::class)
             ->aliasMiddleware('tracing.auth', TracingAuthMiddleware::class);
 
-        Route::prefix(config('tracing.ui.path', 'tracing'))
-            ->middleware(config('tracing.ui.middleware', ['web']))
+        Route::prefix(config('tracing.ui.path'))
+            ->middleware(config('tracing.ui.middleware'))
             ->name('tracing.')
             ->group(__DIR__ . '/../Http/routes.php');
     }
@@ -142,7 +142,7 @@ final class TracingServiceProvider extends ServiceProvider
         }
 
         RateLimiter::for('tracing-api', function (Request $request): Limit {
-            if (!config('tracing.rate_limit.enabled', true)) {
+            if (!config('tracing.rate_limit.enabled')) {
                 return Limit::none();
             }
 
@@ -153,8 +153,8 @@ final class TracingServiceProvider extends ServiceProvider
                 : (string) $request->ip();
 
             return Limit::perMinutes(
-                (int) config('tracing.rate_limit.decay_minutes', 1),
-                (int) config('tracing.rate_limit.max_attempts', 120),
+                (int) config('tracing.rate_limit.decay_minutes'),
+                (int) config('tracing.rate_limit.max_attempts'),
             )->by($key);
         });
     }

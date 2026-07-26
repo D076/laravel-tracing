@@ -79,7 +79,7 @@ final class Tags
     {
         $tags = array_values(array_unique($tags));
 
-        if (config('tracing.tags.in_logs', false)) {
+        if (config('tracing.tags.in_logs')) {
             Context::add(self::CONTEXT_KEY, $tags);
             Context::forgetHidden(self::CONTEXT_KEY);
         } else {

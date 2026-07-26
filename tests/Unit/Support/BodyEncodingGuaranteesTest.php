@@ -251,3 +251,25 @@ describe('BodyEncoding contract: parameter values', function () {
             ->and($result['nested']['null'])->toBeNull();
     });
 });
+
+describe('BodyEncoding contract: byte budget', function () {
+    it('cuts an oversized body on a character boundary and marks it', function () {
+        $result = BodyEncoding::truncateBytes(str_repeat('я', 100), 21);
+
+        // 21 bytes cannot hold 11 whole two-byte characters, so 20 are taken.
+        expect($result)->toBe(str_repeat('я', 10) . '...[truncated]')
+            ->and(mb_check_encoding($result, 'UTF-8'))->toBeTrue();
+    });
+
+    it('leaves a body that fits byte for byte', function () {
+        expect(BodyEncoding::truncateBytes('Москва', 1000))->toBe('Москва');
+    });
+
+    it('treats a non-positive budget as "do not truncate", not "keep nothing"', function (int $limit) {
+        // A missing config key arrives here as 0; truncating to it would have
+        // reduced every stored body to the marker alone.
+        $body = str_repeat('я', 5000);
+
+        expect(BodyEncoding::truncateBytes($body, $limit))->toBe($body);
+    })->with([0, -1]);
+});

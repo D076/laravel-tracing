@@ -25,7 +25,7 @@ final class TracingMiddleware
 
         $this->context->startedAt = microtime(true);
 
-        if (!config('tracing.enabled', true) || $this->isExcluded($request)) {
+        if (!config('tracing.enabled') || $this->isExcluded($request)) {
             $this->context->shouldRecord = false;
 
             return $next($request);
@@ -48,7 +48,7 @@ final class TracingMiddleware
         $this->context->requestHeaders = BodyEncoding::toUtf8Deep(
             $this->service->maskHeaders(
                 $request->headers->all(),
-                config('tracing.masked_request_headers', [])
+                config('tracing.masked_request_headers')
             ),
             $charset,
         );
@@ -82,13 +82,13 @@ final class TracingMiddleware
     {
         // A non-empty only_paths turns recording into an allowlist; ignore_paths
         // is still subtracted from it, so an ignored path stays ignored.
-        $onlyPaths = (array) config('tracing.only_paths', []);
+        $onlyPaths = (array) config('tracing.only_paths');
 
         if ($onlyPaths !== [] && !$this->matchesAny($request, $onlyPaths)) {
             return true;
         }
 
-        return $this->matchesAny($request, (array) config('tracing.ignore_paths', []));
+        return $this->matchesAny($request, (array) config('tracing.ignore_paths'));
     }
 
     /** @param array<int, string> $patterns */
@@ -110,10 +110,10 @@ final class TracingMiddleware
             return null;
         }
 
-        if (str_contains($request->header('Content-Type', ''), 'multipart/form-data')) {
-            return $request->except(array_keys($request->allFiles())) ?: null;
-        }
-
-        return $request->all() ?: null;
+        // Uploaded files are dropped rather than serialized. No media-type check:
+        // allFiles() is empty on anything that is not a file upload, so except()
+        // degrades to all() on its own — and an upload arriving under a
+        // Content-Type we did not anticipate is covered too.
+        return $request->except(array_keys($request->allFiles())) ?: null;
     }
 }

@@ -41,6 +41,16 @@ describe('TracingService::truncateJson', function () {
         expect(invokeTruncateJson($this->service, null))->toBeNull();
     });
 
+    it('keeps the payload whole when the budget is not positive', function (mixed $limit) {
+        // A missing key casts to 0, which used to mean "every payload is over
+        // budget" and replaced all of them with the truncation summary.
+        config()->set('tracing.max_body_size', $limit);
+
+        $data = ['note' => str_repeat('я', 5000)];
+
+        expect(invokeTruncateJson($this->service, $data))->toBe($data);
+    })->with([0, null, -1]);
+
     it('does not throw on a body param carrying invalid UTF-8', function () {
         config()->set('tracing.max_body_size', 10000);
 
