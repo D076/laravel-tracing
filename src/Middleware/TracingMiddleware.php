@@ -80,7 +80,21 @@ final class TracingMiddleware
 
     private function isExcluded(Request $request): bool
     {
-        foreach (config('tracing.ignore_paths', []) as $pattern) {
+        // A non-empty only_paths turns recording into an allowlist; ignore_paths
+        // is still subtracted from it, so an ignored path stays ignored.
+        $onlyPaths = (array) config('tracing.only_paths', []);
+
+        if ($onlyPaths !== [] && !$this->matchesAny($request, $onlyPaths)) {
+            return true;
+        }
+
+        return $this->matchesAny($request, (array) config('tracing.ignore_paths', []));
+    }
+
+    /** @param array<int, string> $patterns */
+    private function matchesAny(Request $request, array $patterns): bool
+    {
+        foreach ($patterns as $pattern) {
             if ($request->is($pattern)) {
                 return true;
             }

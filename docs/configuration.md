@@ -90,6 +90,28 @@ RateLimiter::for('tracing-api', fn ($request) =>
 
 The UI path (`tracing/*`) is excluded automatically in `TracingServiceProvider::boot()`.
 
+## Restricting tracing to specific routes (inbound)
+
+`only_paths` is the mirror image of `ignore_paths`: an allowlist. While it is empty (the default) everything is traced except `ignore_paths`. Once it is non-empty, **only** matching routes are traced:
+
+```php
+'only_paths' => [
+    'api/*',
+    'webhooks/*',
+],
+```
+
+`ignore_paths` keeps working and is subtracted from the allowlist, so a route matched by both is not traced:
+
+```php
+'only_paths'   => ['api/*'],      // trace the API…
+'ignore_paths' => ['api/health'], // …except the health check
+```
+
+Patterns use the same `*` wildcard and the same `Request::is()` matching as `ignore_paths`.
+
+Being outside the allowlist only suppresses **recording**. `trace_id` is still generated and propagated into `Context`, logs and outbound `Http::*` calls, and the `X-Trace-Id` response header is still sent — exactly as for an ignored path. To switch the package off entirely, use `TRACING_ENABLED=false`.
+
 ## Excluding URLs (outbound)
 
 ```php
