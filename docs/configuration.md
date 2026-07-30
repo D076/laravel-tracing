@@ -291,11 +291,13 @@ Search terms are matched **literally**: `%` and `_` are escaped rather than trea
 
 `?date_from=` and `?date_to=` accept exactly three formats:
 
-| Format | Example | Meaning |
-|---|---|---|
-| `Y-m-d` | `2026-07-01` | whole day — `date_from` starts at `00:00:00`, `date_to` ends at `23:59:59` |
-| `Y-m-d H:i` | `2026-07-01 14:30` | that minute, seconds zeroed |
-| `Y-m-d H:i:s` | `2026-07-01 14:30:15` | that second |
+As an upper bound (`?date_to`), each format is rounded up to the end of the unit it leaves unspecified, so the range is always inclusive of its own last second:
+
+| Format | Example | `date_from` starts at | `date_to` ends at |
+|---|---|---|---|
+| `Y-m-d` | `2026-07-01` | `00:00:00` | `23:59:59` (end of day) |
+| `Y-m-d H:i` | `2026-07-01 14:30` | `14:30:00` | `14:30:59` (end of minute) |
+| `Y-m-d H:i:s` | `2026-07-01 14:30:15` | `14:30:15` | `14:30:15` (exact second) |
 
 Anything else — a different format, a date that does not exist (`2026-02-31`), a relative string (`yesterday`), or an array (`?date_from[]=`) — is answered with **422** and a validation error naming the parameter. Rejecting is deliberate: the raw string previously reached the driver and PostgreSQL failed the request with `invalid input syntax for type timestamp`, while parsing leniently would have been worse still — `Carbon::parse()` reads `x` as a military timezone and silently shifts the window by hours, and treats a mistyped year as a valid date matching nothing, both answering `200` over a wrong result set. The web UI uses date inputs and always sends `Y-m-d`, so only hand-written API calls are affected.
 
@@ -319,7 +321,7 @@ Some values are genuinely absent from storage; this is not a search bug:
 
 - **Truncated payloads.** Bodies larger than `max_body_size` (default `10000` **bytes**) are cut and marked `...[truncated]`; anything past the cut is unsearchable. An oversized `body_params` is replaced wholesale with `{"_truncated": true, "_original_size": N}`. The budget is in bytes because that is what storage, the column limit and the queue payload cost; the cut itself lands on a character boundary, never mid-character. Multi-byte text therefore keeps proportionally fewer characters — a Cyrillic body about half as many as a Latin one — because it occupies proportionally more disk. Raise the limit if you want more of such bodies kept.
 
-  Set `max_body_size` (or `outgoing.max_body_size`) to `0` to disable truncation and store bodies whole — mind the column ceiling below before you do. A missing key reads as `0` too, so an incomplete published config keeps payloads rather than discarding them.
+  Set `max_body_size` (or `outgoing.max_body_size`) to `0` to disable truncation and store bodies whole — mind the column ceiling below before you do. Only a numeric env value is honoured this way: an empty or non-numeric `TRACING_MAX_BODY_SIZE` (e.g. a blank `TRACING_MAX_BODY_SIZE=` in `.env`) falls back to the default of `10000` rather than casting to `0` and silently disabling truncation.
 
   On MySQL the payload columns are `text`, capped at **65535 bytes**, so a `max_body_size` near or above that will fail the write — and since a failed write is logged and swallowed, the whole trace record is lost, not just the body. Keep the limit comfortably under it, or widen the columns to `longtext` yourself; the package does not ship that migration, because altering these tables rebuilds them and blocks writes for as long as it takes.
 - **Skipped response bodies.** With `store_response_body_only_json=true` (the default) a non-JSON response body is never stored.

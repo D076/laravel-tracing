@@ -39,7 +39,8 @@
     }
   },
   "scripts": {
-    "test": "pest"
+    "test": "pest",
+    "analyse": "phpstan analyse --memory-limit=1G"
   },
   "config": {
     "allow-plugins": {

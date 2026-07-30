@@ -27,7 +27,14 @@ final class TracingApiController extends Controller
      */
     private const LIKE_ESCAPE_SQL = " escape '" . self::LIKE_ESCAPE . "'";
 
-    /** Accepted ?date_from / ?date_to formats. A bare date bounds the whole day. */
+    /**
+     * Accepted ?date_from / ?date_to formats. As an upper bound (?date_to), each
+     * format is rounded up to the end of the unit it leaves unspecified: a bare
+     * date bounds the whole day, a date with hour:minute bounds that whole
+     * minute, and a fully-specified second is used exactly as given. Without
+     * this, e.g. `?date_to=2026-01-01 10:30` would silently exclude everything
+     * from 10:30:00 to 10:30:59 even though the user asked for "up to 10:30".
+     */
     private const DATE_FORMATS = ['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s'];
 
     public function index(Request $request): JsonResponse
@@ -392,7 +399,7 @@ final class TracingApiController extends Controller
             $query->where('created_at', '>=', $from);
         }
 
-        if (($to = $this->dateQuery($request, 'date_to', endOfDay: true)) !== null) {
+        if (($to = $this->dateQuery($request, 'date_to', upperBound: true)) !== null) {
             $query->where('created_at', '<=', $to);
         }
     }
@@ -407,8 +414,13 @@ final class TracingApiController extends Controller
      * either: it reads "x" as a military timezone and shifts the window by
      * hours, and a mistyped year as a valid date that quietly matches nothing.
      * Hence an explicit format list, which is also what the UI sends.
+     *
+     * $upperBound rounds the parsed value up to the end of whichever unit the
+     * matched format left unspecified (day for 'Y-m-d', minute for
+     * 'Y-m-d H:i'), so that ?date_to is inclusive of its own last second
+     * regardless of which of the three formats was used.
      */
-    private function dateQuery(Request $request, string $key, bool $endOfDay = false): ?Carbon
+    private function dateQuery(Request $request, string $key, bool $upperBound = false): ?Carbon
     {
         $raw = $request->query($key);
 
@@ -432,13 +444,30 @@ final class TracingApiController extends Controller
                 continue;
             }
 
+            // rawCreateFromFormat() is declared `?static` and only throws
+            // InvalidFormatException under Carbon::useStrictMode(true) (the
+            // default). With strict mode off — a host app setting we do not
+            // control — it returns null instead, which the round-trip check
+            // below would then call format() on and fail with a 500.
+            if ($date === null) {
+                continue;
+            }
+
             // createFromFormat accepts overflow ('2026-02-31' rolls into March),
             // so round-tripping is what actually validates the value.
             if ($date->format($format) !== $raw) {
                 continue;
             }
 
-            return $endOfDay && $format === 'Y-m-d' ? $date->endOfDay() : $date;
+            if (!$upperBound) {
+                return $date;
+            }
+
+            return match ($format) {
+                'Y-m-d' => $date->endOfDay(),
+                'Y-m-d H:i' => $date->endOfMinute(),
+                default => $date,
+            };
         }
 
         $this->rejectDate($key);

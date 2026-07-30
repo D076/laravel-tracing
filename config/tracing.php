@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * Casts an env() value to int, falling back to $default when the value is not
+ * numeric. Needed because `env('X')` returns '' (not the default) for a key
+ * that is present in .env but empty — e.g. `TRACING_MAX_BODY_SIZE=` — and a
+ * bare `(int) ''` silently produces 0, which for max_body_size means "do not
+ * truncate" rather than "use the default". An explicit `0` is numeric and is
+ * kept as-is: that is the documented opt-out from truncation.
+ */
+$tracingIntEnv = static fn (mixed $value, int $default): int => is_numeric($value) ? (int) $value : $default;
+
 return [
     'enabled' => (bool) env('TRACING_ENABLED', true),
 
@@ -68,8 +78,10 @@ return [
         'store_request_body' => (bool) env('TRACING_OUTGOING_STORE_REQUEST_BODY', true),
         'store_response_body' => (bool) env('TRACING_OUTGOING_STORE_RESPONSE_BODY', true),
         // In bytes, like the inbound max_body_size — see its note below.
-        // 0 (или null) — усечение выключено.
-        'max_body_size' => (int) env('TRACING_OUTGOING_MAX_BODY_SIZE', 10000),
+        // 0 (или null) — усечение выключено. A non-numeric env value (e.g. an
+        // empty TRACING_OUTGOING_MAX_BODY_SIZE=) falls back to the default
+        // instead of silently casting to 0 — see $tracingIntEnv above.
+        'max_body_size' => $tracingIntEnv(env('TRACING_OUTGOING_MAX_BODY_SIZE', 10000), 10000),
         'propagate_trace_id' => (bool) env('TRACING_OUTGOING_PROPAGATE_TRACE_ID', false),
         'masked_request_headers' => [
             'authorization',
@@ -183,8 +195,12 @@ return [
      | 0 (или null) — усечение выключено, тело сохраняется целиком.
      |
      | On MySQL the payload columns are `text`, capped at 65535 bytes.
+     |
+     | A non-numeric env value (e.g. an empty TRACING_MAX_BODY_SIZE=) falls
+     | back to the default instead of silently casting to 0 and disabling
+     | truncation — see $tracingIntEnv above.
      */
-    'max_body_size' => (int) env('TRACING_MAX_BODY_SIZE', 10000),
+    'max_body_size' => $tracingIntEnv(env('TRACING_MAX_BODY_SIZE', 10000), 10000),
 
     /*
      | Сохранять ли тело ответа.

@@ -14,6 +14,7 @@ use Illuminate\Http\Client\Events\ConnectionFailed;
 use Illuminate\Http\Client\Events\RequestSending;
 use Illuminate\Http\Client\Events\ResponseReceived;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
@@ -32,7 +33,7 @@ final class TracingServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__ . '/../../config/tracing.php', 'tracing');
+        $this->mergeTracingConfig();
 
         $this->app->singleton(TraceId::class);
         $this->app->singleton(Tags::class);
@@ -157,5 +158,56 @@ final class TracingServiceProvider extends ServiceProvider
                 (int) config('tracing.rate_limit.max_attempts'),
             )->by($key);
         });
+    }
+
+    /**
+     * Replacement for ServiceProvider::mergeConfigFrom(). That method does a
+     * flat array_merge(), so a nested array key in a *published* config —
+     * anything under outgoing/ui/rate_limit/tags — replaces the whole
+     * sub-array wholesale instead of merging key-by-key. A config published
+     * with `vendor:publish --tag=tracing-config` on an older package version
+     * would then read a key added since as null, and some of those nulls
+     * fail hard rather than degrade: `Route::middleware(null)`,
+     * `Limit::perMinutes(0, 0)` (a permanent 429), `foreach (null as ...)`.
+     *
+     * replaceConfigRecursivelyFrom() (array_replace_recursive) is not the fix
+     * either: it merges list values element-by-element by numeric index, so
+     * a user publishing a *shorter* ignore_paths/only_paths than the
+     * package's own could never shrink it — the package's trailing elements
+     * would survive at their original indexes.
+     *
+     * So: top-level keys are filled in when the user's published config lacks
+     * them, exactly like mergeConfigFrom(). One level of *associative*
+     * sub-array (outgoing, ui, rate_limit, tags) is filled in key-by-key for
+     * the same reason a top-level key is. A *list* value (array_is_list())
+     * is always taken from the published config as a whole, never merged
+     * element-by-element. The user's own value always wins.
+     */
+    private function mergeTracingConfig(): void
+    {
+        if ($this->app instanceof CachesConfiguration && $this->app->configurationIsCached()) {
+            return;
+        }
+
+        $config = $this->app->make('config');
+
+        /** @var array<string, mixed> $defaults */
+        $defaults = require __DIR__ . '/../../config/tracing.php';
+        /** @var array<string, mixed> $published */
+        $published = $config->get('tracing', []);
+
+        $merged = $defaults;
+
+        foreach ($published as $key => $value) {
+            $merged[$key] = is_array($value)
+                && !array_is_list($value)
+                && isset($merged[$key])
+                && is_array($merged[$key])
+                && !array_is_list($merged[$key])
+                ? array_merge($merged[$key], $value)
+                : $value;
+        }
+
+        $config->set('tracing', $merged);
     }
 }

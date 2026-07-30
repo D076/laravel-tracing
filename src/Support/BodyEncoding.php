@@ -30,6 +30,13 @@ use ValueError;
  * recovered. It becomes a marker, or U+FFFD inside a parameter. In practice a
  * sender that knows it is not UTF-8 says so in Content-Type.
  *
+ * A declared charset only counts if it is a single RFC-token-shaped label
+ * (see {@see isConvertible()}). `mb_convert_encoding()` reads its charset
+ * argument as a comma-separated *detection list* when it holds more than one
+ * name, so a multi-value charset — a malformed declaration, or two
+ * Content-Type headers joined by PSR-7's `getHeaderLine()` — would otherwise
+ * smuggle the removed detection behaviour back in through that argument.
+ *
  * Must run BEFORE masking and truncation: json_decode/parse_str only understand
  * UTF-8, and truncation assumes valid UTF-8 input (see {@see truncateBytes()}).
  */
@@ -185,9 +192,22 @@ final class BodyEncoding
      * A charset that could recover something. A charset of UTF-8 on content that
      * failed mb_check_encoding is simply wrong, and converting UTF-8 to itself
      * would not repair it.
+     *
+     * Also rejects anything that is not a single RFC-token-shaped charset name.
+     * `mb_convert_encoding($str, 'UTF-8', $charset)` treats its third argument as
+     * a comma-separated *detection list*, not a single label, when it contains
+     * more than one name — so a value like `'UTF-8, Windows-1251'` (a malformed
+     * declared charset) or `'windows-1251, text/plain'` (two Content-Type headers
+     * joined by PSR-7's `getHeaderLine()`) would silently re-enable the charset
+     * *detection* this class deliberately does not do, and turn binary payloads
+     * into fabricated pseudo-text. A single token never matches that shape, so
+     * this is the one point that must gate every caller — including the public
+     * toUtf8Value()/toUtf8Deep() which accept a charset from arbitrary callers.
      */
     private static function isConvertible(?string $charset): bool
     {
-        return $charset !== null && strtoupper($charset) !== 'UTF-8';
+        return $charset !== null
+            && strtoupper($charset) !== 'UTF-8'
+            && preg_match('/^[\w.:+-]+$/', $charset) === 1;
     }
 }
