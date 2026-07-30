@@ -37,27 +37,23 @@ final class TracingApiController extends Controller
      */
     private const DATE_FORMATS = ['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s'];
 
+    /**
+     * Recognized ?status_group values mapped to their inclusive response_status range.
+     *
+     * @var array<string, array{0: int, 1: int}>
+     */
+    private const STATUS_RANGES = [
+        '2xx' => [200, 299],
+        '3xx' => [300, 399],
+        '4xx' => [400, 499],
+        '5xx' => [500, 599],
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $query = TracingRequest::query();
 
-        if ($raw = $request->query('status_group')) {
-            $groups = is_array($raw) ? $raw : explode(',', (string) $raw);
-            $groups = array_filter($groups, 'is_string');
-            if ($groups) {
-                $query->where(function ($q) use ($groups): void {
-                    foreach ($groups as $group) {
-                        match ($group) {
-                            '2xx' => $q->orWhereBetween('response_status', [200, 299]),
-                            '3xx' => $q->orWhereBetween('response_status', [300, 399]),
-                            '4xx' => $q->orWhereBetween('response_status', [400, 499]),
-                            '5xx' => $q->orWhereBetween('response_status', [500, 599]),
-                            default => null,
-                        };
-                    }
-                });
-            }
-        }
+        $this->applyStatusGroupFilter($query, $request);
 
         if (($method = $this->stringQuery($request, 'method')) !== null) {
             $query->where('method', strtoupper($method));
@@ -171,22 +167,7 @@ final class TracingApiController extends Controller
             $query->where('trace_id', $traceId);
         }
 
-        if ($raw = $request->query('status_group')) {
-            $groups = array_filter(is_array($raw) ? $raw : explode(',', (string) $raw), 'is_string');
-            if ($groups) {
-                $query->where(function ($q) use ($groups): void {
-                    foreach ($groups as $group) {
-                        match ($group) {
-                            '2xx' => $q->orWhereBetween('response_status', [200, 299]),
-                            '3xx' => $q->orWhereBetween('response_status', [300, 399]),
-                            '4xx' => $q->orWhereBetween('response_status', [400, 499]),
-                            '5xx' => $q->orWhereBetween('response_status', [500, 599]),
-                            default => null,
-                        };
-                    }
-                });
-            }
-        }
+        $this->applyStatusGroupFilter($query, $request);
 
         if (($method = $this->stringQuery($request, 'method')) !== null) {
             $query->where('method', strtoupper($method));
@@ -275,6 +256,69 @@ final class TracingApiController extends Controller
                 'created_at' => $record->created_at->toIso8601String(),
             ],
         ]);
+    }
+
+    /**
+     * ORs together response_status ranges named by ?status_group.
+     *
+     * Accepts a single value (?status_group=2xx), a comma-separated list
+     * (?status_group=2xx,5xx), or an array (?status_group[]=2xx&status_group[]=5xx).
+     *
+     * An absent parameter, or one with no non-empty entries left after
+     * normalisation, means "not asked for" and applies no filter at all —
+     * consistent with stringQuery() treating '' as null. But once at least one
+     * non-empty entry is given, an unrecognized group name is never silently
+     * dropped into "no clause added, so match everything": if none of the given
+     * entries are recognized, the filter selects no rows at all. That is the
+     * same failure mode stringQuery() and dateQuery() are documented to
+     * prevent — a match() with no matching arm and a no-op default would let
+     * an empty nested where() vanish and the endpoint would answer 200 over
+     * the whole table.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder<covariant \Illuminate\Database\Eloquent\Model> $query
+     */
+    private function applyStatusGroupFilter(\Illuminate\Database\Eloquent\Builder $query, Request $request): void
+    {
+        $raw = $request->query('status_group');
+
+        if ($raw === null) {
+            return;
+        }
+
+        $groups = [];
+
+        foreach (is_array($raw) ? $raw : explode(',', (string) $raw) as $group) {
+            // A nested array (?status_group[][]=x) is skipped here rather than
+            // cast: (string) on an array raises a warning and filters by the
+            // literal "Array".
+            if (!is_string($group)) {
+                continue;
+            }
+
+            $group = trim($group);
+
+            if ($group !== '') {
+                $groups[] = $group;
+            }
+        }
+
+        if ($groups === []) {
+            return;
+        }
+
+        $ranges = array_intersect_key(self::STATUS_RANGES, array_flip($groups));
+
+        if ($ranges === []) {
+            $query->whereRaw('0 = 1');
+
+            return;
+        }
+
+        $query->where(function ($q) use ($ranges): void {
+            foreach ($ranges as $range) {
+                $q->orWhereBetween('response_status', $range);
+            }
+        });
     }
 
     /**
