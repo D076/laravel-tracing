@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 
 uses(RefreshDatabase::class);
 
@@ -51,4 +52,22 @@ it('does not record outgoing requests when disabled', function () {
     Http::get('https://api.example.com/ping');
 
     expect(OutgoingRequest::count())->toBe(0);
+});
+
+it('does not register the UI routes when disabled', function (string $path) {
+    // bootUi() sits below the master gate, so the routes are never defined —
+    // a 404 from "no such route", not a 403 from the gate.
+    $this->get($path)->assertNotFound();
+})->with([
+    'spa shell' => ['/tracing'],
+    'requests api' => ['/tracing/api/requests'],
+    'outgoing api' => ['/tracing/api/outgoing'],
+    'assets' => ['/tracing/assets/app.css'],
+]);
+
+it('still registers the migrations when disabled', function () {
+    // Deliberately outside the gate: disabling tracing must not silently remove
+    // the tables from `php artisan migrate`.
+    expect(Schema::hasTable('tracing_requests'))->toBeTrue()
+        ->and(Schema::hasTable('tracing_outgoing_requests'))->toBeTrue();
 });
