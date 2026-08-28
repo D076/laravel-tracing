@@ -14,7 +14,7 @@ final class TracingUiController extends Controller
     {
         return response()->view('tracing::index', [
             'theme' => Theme::resolve(config('tracing.ui.theme')),
-            'themes' => Theme::ids(),
+            'themes' => Theme::availableIds(),
             'themeStorageKey' => Theme::storageKey(),
             'scriptUrl' => self::assetUrl('app.js'),
             'styleUrl' => self::assetUrl('app.css'),

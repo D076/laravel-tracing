@@ -21,6 +21,7 @@ export default {
                 surface: {
                     DEFAULT: token('surface'),
                     sunken: token('surface-sunken'),
+                    code: token('surface-code'),
                 },
                 // `line` rather than `border`, which would collide with the
                 // border-width utilities (`border`, `border-2`).

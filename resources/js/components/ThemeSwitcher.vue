@@ -11,7 +11,8 @@ function select(id) {
 </script>
 
 <template>
-    <div class="flex items-center gap-0.5 rounded-lg border border-line bg-surface-sunken p-0.5">
+    <!-- One theme is not a choice: a switcher that cannot switch is noise. -->
+    <div v-if="THEMES.length > 1" class="flex items-center gap-0.5 rounded-lg border border-line bg-surface-sunken p-0.5">
         <button
             v-for="theme in THEMES"
             :key="theme.id"

@@ -23,7 +23,7 @@ async function copy() {
 </script>
 
 <template>
-    <div v-if="formatted !== null" class="relative group rounded-lg border border-line bg-surface-sunken overflow-hidden">
+    <div v-if="formatted !== null" class="relative group rounded-lg border border-line bg-surface-code overflow-hidden">
         <button
             @click="copy"
             class="absolute top-2 right-5 text-xs px-2 py-0.5 rounded bg-surface border border-line text-fg-faint hover:text-fg hover:border-line-input transition-all opacity-0 group-hover:opacity-100 z-10"

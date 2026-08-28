@@ -110,3 +110,65 @@ it('gives every registered theme a palette block of its own', function () {
         expect($css)->toContain("[data-theme='".$id."']");
     }
 });
+
+/**
+ * Palette blocks keyed by theme id, each holding the `--tr-*` names it declares.
+ *
+ * Comments are stripped first: the file's header documents the mechanism with a
+ * literal `[data-theme='<id>']`, which would otherwise register as a theme.
+ * Selectors are read per innermost block, so the `system` palette is found
+ * inside its `prefers-color-scheme` wrapper like any other.
+ *
+ * @return array<string, array{tokens: list<string>, scheme: bool}>
+ */
+function themePalettes(): array
+{
+    $css = (string) file_get_contents(dirname(__DIR__, 3).'/resources/css/themes.css');
+    $css = (string) preg_replace('#/\*.*?\*/#s', '', $css);
+
+    preg_match_all('/(?<selectors>[^{}]*)\{(?<body>[^{}]*)\}/', $css, $blocks, PREG_SET_ORDER);
+
+    $palettes = [];
+
+    foreach ($blocks as $block) {
+        preg_match_all("/\[data-theme='([^']+)'\]/", $block['selectors'], $ids);
+        preg_match_all('/(--tr-[a-z0-9-]+)\s*:/', $block['body'], $tokens);
+
+        foreach ($ids[1] as $id) {
+            $palettes[$id] = [
+                'tokens' => array_values(array_unique(array_merge($palettes[$id]['tokens'] ?? [], $tokens[1]))),
+                'scheme' => ($palettes[$id]['scheme'] ?? false) || str_contains($block['body'], 'color-scheme:'),
+            ];
+        }
+    }
+
+    return $palettes;
+}
+
+it('gives every registered theme the full token set', function () {
+    $palettes = themePalettes();
+    $reference = $palettes['light']['tokens'] ?? [];
+
+    expect($reference)->not->toBeEmpty();
+
+    foreach (Theme::ids() as $id) {
+        $tokens = $palettes[$id]['tokens'] ?? [];
+
+        // A missing token silently falls back to the `:root` value, so the theme
+        // renders mostly right and wrong in a few places — the worst failure mode.
+        expect(array_values(array_diff($reference, $tokens)))
+            ->toBe([], "Theme '".$id."' leaves tokens undefined: ".implode(', ', array_diff($reference, $tokens)));
+
+        expect(array_values(array_diff($tokens, $reference)))
+            ->toBe([], "Theme '".$id."' declares tokens no other theme does: ".implode(', ', array_diff($tokens, $reference)));
+    }
+});
+
+it('declares color-scheme in every registered theme', function () {
+    $palettes = themePalettes();
+
+    foreach (Theme::ids() as $id) {
+        expect($palettes[$id]['scheme'] ?? false)
+            ->toBeTrue("Theme '".$id."' does not set color-scheme, so native controls keep the light scheme.");
+    }
+});

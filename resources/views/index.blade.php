@@ -28,6 +28,9 @@
         window.__tracing = {
             apiBase: @json(rtrim(url(config('tracing.ui.path', 'tracing')), '/') . '/api'),
             basePath: @json('/' . trim(config('tracing.ui.path', 'tracing'), '/')),
+            // The SPA compiles the whole registry into its bundle; only the
+            // server knows which of those themes this installation offers.
+            themes: @json($themes),
         };
     </script>
     <script type="module" src="{{ $scriptUrl }}"></script>

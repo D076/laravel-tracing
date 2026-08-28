@@ -14,8 +14,8 @@ return [
     'enabled' => (bool) env('TRACING_ENABLED', true),
 
     /*
-     | 'database' — синхронная запись в terminate()
-     | 'queue'    — запись через очередь
+     | 'database' — written synchronously in terminate()
+     | 'queue'    — written through a queued job
      */
     'driver' => env('TRACING_DRIVER', 'database'),
 
@@ -23,8 +23,8 @@ return [
     'queue_connection' => env('TRACING_QUEUE_CONNECTION', null),
 
     /*
-     | Маршруты, исключённые из мониторинга.
-     | Поддерживает wildcard * через Request::is().
+     | Routes excluded from tracing.
+     | Supports the * wildcard through Request::is().
      */
     'ignore_paths' => [
         'up',
@@ -44,32 +44,32 @@ return [
     ],
 
     /*
-     | Белый список маршрутов. Пустой массив (по умолчанию) — мониторим всё,
-     | кроме ignore_paths. Непустой — мониторим ТОЛЬКО совпавшие маршруты.
-     | ignore_paths при этом продолжает работать и вычитается из белого списка.
-     | Поддерживает wildcard * через Request::is().
+     | Route allowlist. Empty (the default) traces everything except
+     | ignore_paths. Non-empty traces ONLY the routes it matches — ignore_paths
+     | still applies and is subtracted from the allowlist.
+     | Supports the * wildcard through Request::is().
      |
      | 'only_paths' => ['api/*'],
      */
     'only_paths' => [],
 
     /*
-     | Мониторинг исходящих HTTP-запросов через фасад Http.
-     | Записи хранятся в таблице tracing_outgoing_requests.
-     | Привязываются к входящему запросу через trace_id.
-     */
-    /*
-     | Произвольные теги приложения на записях (аналог Telescope::tag()).
-     | Навешиваются через фасад D076\Tracing\Facades\Tracing::tag('...').
+     | Application-defined tags on records (the counterpart of Telescope::tag()),
+     | applied through D076\Tracing\Facades\Tracing::tag('...').
      |
-     | in_logs=false (по умолчанию) — теги хранятся в СКРЫТОМ Context и не
-     | подмешиваются в лог-записи приложения; true — в видимом Context, тогда
-     | Laravel добавляет их в контекст каждого лога.
+     | in_logs=false (the default) keeps tags in HIDDEN Context, out of the
+     | application's log entries; true puts them in visible Context, where
+     | Laravel adds them to the context of every log line.
      */
     'tags' => [
         'in_logs' => (bool) env('TRACING_TAGS_IN_LOGS', false),
     ],
 
+    /*
+     | Tracing of outbound HTTP requests made through the Http facade.
+     | Records live in tracing_outgoing_requests and link back to the inbound
+     | request through trace_id.
+     */
     'outgoing' => [
         'enabled' => (bool) env('TRACING_OUTGOING_ENABLED', true),
         'driver' => env('TRACING_OUTGOING_DRIVER', 'database'),
@@ -78,7 +78,7 @@ return [
         'store_request_body' => (bool) env('TRACING_OUTGOING_STORE_REQUEST_BODY', true),
         'store_response_body' => (bool) env('TRACING_OUTGOING_STORE_RESPONSE_BODY', true),
         // In bytes, like the inbound max_body_size — see its note below.
-        // 0 (или null) — усечение выключено. A non-numeric env value (e.g. an
+        // 0 (or null) disables truncation. A non-numeric env value (e.g. an
         // empty TRACING_OUTGOING_MAX_BODY_SIZE=) falls back to the default
         // instead of silently casting to 0 — see $tracingIntEnv above.
         'max_body_size' => $tracingIntEnv(env('TRACING_OUTGOING_MAX_BODY_SIZE', 10000), 10000),
@@ -98,8 +98,9 @@ return [
             'client_secret',
             'private_key',
         ],
-        // Поля тела ОТВЕТА внешнего API, заменяемые на '[REDACTED]'. Только JSON-тела.
-        // Пустой список — маскирование выключено (тело только усекается).
+        // Fields of the RESPONSE body returned by the external API, replaced
+        // with '[REDACTED]'. JSON bodies only; an empty list disables masking
+        // and the body is merely truncated.
         'masked_response_body_params' => [
             'password',
             'secret',
@@ -116,33 +117,37 @@ return [
     ],
 
     /*
-     | Веб-интерфейс для просмотра записей трейсинга.
-     | Доступен по адресу /{ui.path} (по умолчанию /tracing).
+     | Web interface for browsing traced records, served at /{ui.path}
+     | (/tracing by default).
      |
-     | Авторизация: зарегистрируй gate 'viewTracing' в AppServiceProvider.
-     | По умолчанию доступ разрешён только в local-окружении.
+     | Authorization: define the 'viewTracing' gate in AppServiceProvider.
+     | Without one, access is allowed in the local environment only.
      */
     'ui' => [
         'enabled' => (bool) env('TRACING_UI_ENABLED', true),
         'path' => env('TRACING_UI_PATH', 'tracing'),
-        // Theme the interface opens with for a visitor who has not picked one.
-        // 'system' follows prefers-color-scheme; 'light' and 'dark' pin it.
-        // A value naming no theme the stylesheet defines falls back to 'system'
-        // rather than reaching the markup — see D076\Tracing\Support\Theme.
+        // Applied to a visitor who has not picked one; their own choice wins
+        // from then on. Values as below; an unknown one falls back to an
+        // enabled theme rather than reaching the markup.
         'theme' => env('TRACING_UI_THEME', 'system'),
+        // Offered in the switcher: 'system', 'light', 'dark', 'bimbo-pink'.
+        // Empty offers all. 'system' drops out unless both 'light' and 'dark'
+        // are enabled — it is a choice between them, not a palette.
+        'enabled_themes' => env('TRACING_UI_ENABLED_THEMES', []),
         'middleware' => ['web'],
     ],
 
     /*
-     | Rate limiting для JSON-API интерфейса (/{ui.path}/api/*).
-     | Применяется ТОЛЬКО к API; SPA-оболочка и ассеты не троттлятся.
-     | Лимит на пользователя (по полиморфному типу+id), для гостя — по IP.
+     | Rate limiting for the JSON API (/{ui.path}/api/*). Applies to the API
+     | ONLY — the SPA shell and its assets are never throttled. Counted per
+     | user (by morph type + id), or per IP for a guest.
      |
-     | Переопределение из приложения:
-     |  - числа: env ниже или опубликованный конфиг;
-     |  - выключить: TRACING_RATE_LIMIT_ENABLED=false;
-     |  - полный контроль: RateLimiter::for('tracing-api', ...) в AppServiceProvider
-     |    (пакет не перезапишет уже определённый limiter).
+     | Overriding it from the application:
+     |  - the numbers: the env vars below, or a published config;
+     |  - off entirely: TRACING_RATE_LIMIT_ENABLED=false;
+     |  - full control: RateLimiter::for('tracing-api', ...) in
+     |    AppServiceProvider — the package never replaces a limiter that is
+     |    already defined.
      */
     'rate_limit' => [
         'enabled' => (bool) env('TRACING_RATE_LIMIT_ENABLED', true),
@@ -151,10 +156,10 @@ return [
     ],
 
     /*
-     | Поля тела запроса, которые заменяются на '[REDACTED]' перед сохранением.
-     | Поддерживает dot-нотацию для вложенных ключей: 'user.password'.
-     | Сравнение регистрозависимо и идёт по ТОЧНОМУ имени ключа, а не по
-     | подстроке: 'token' не маскирует 'access_token' — каждое имя перечисляется.
+     | Request body fields replaced with '[REDACTED]' before storage.
+     | Dot notation addresses nested keys: 'user.password'.
+     | Matching is case-sensitive and by WHOLE key name, never by substring:
+     | 'token' does not mask 'access_token' — list every name you want masked.
      */
     'masked_body_params' => [
         'password',
@@ -171,8 +176,8 @@ return [
     ],
 
     /*
-     | Заголовки запроса, которые заменяются на '[REDACTED]' перед сохранением.
-     | Имена нечувствительны к регистру.
+     | Request headers replaced with '[REDACTED]' before storage.
+     | Header names are matched case-insensitively.
      */
     'masked_request_headers' => [
         'authorization',
@@ -184,16 +189,16 @@ return [
     ],
 
     /*
-     | Заголовки ответа, которые заменяются на '[REDACTED]'.
+     | Response headers replaced with '[REDACTED]'.
      */
     'masked_response_headers' => [
         'set-cookie',
     ],
 
     /*
-     | Поля тела ОТВЕТА, заменяемые на '[REDACTED]' перед сохранением (только JSON).
-     | Применяется при store_response_body=true. Dot-нотация поддерживается.
-     | Пустой список — маскирование выключено (тело только усекается).
+     | RESPONSE body fields replaced with '[REDACTED]' before storage (JSON
+     | only). Applies when store_response_body=true; dot notation supported.
+     | An empty list disables masking — the body is still truncated.
      */
     'masked_response_body_params' => [
         'password',
@@ -217,7 +222,7 @@ return [
      | character is 2 bytes, an emoji 4) because it costs proportionally more
      | disk. Raise the limit if you want more of such bodies kept.
      |
-     | 0 (или null) — усечение выключено, тело сохраняется целиком.
+     | 0 (or null) disables truncation — the body is stored whole.
      |
      | On MySQL the payload columns are `text`, capped at 65535 bytes.
      |
@@ -228,21 +233,21 @@ return [
     'max_body_size' => $tracingIntEnv(env('TRACING_MAX_BODY_SIZE', 10000), 10000),
 
     /*
-     | Сохранять ли тело ответа.
+     | Whether to store the response body.
      */
     'store_response_body' => (bool) env('TRACING_STORE_RESPONSE_BODY', true),
 
     'store_response_body_only_json' => (bool) env('TRACING_STORE_RESPONSE_BODY_ONLY_JSON', true),
 
     /*
-     | Кастомный DB connection для таблицы TRACING_requests.
-     | null = использовать connection по умолчанию.
+     | Custom DB connection for the tracing tables.
+     | null uses the application's default connection.
      */
     'connection' => env('TRACING_DB_CONNECTION', null),
 
     /*
-     | Срок хранения записей в днях для команды model:prune.
-     | 0 или null — автоочистка отключена.
+     | How long records are kept, in days, for the model:prune command.
+     | 0 or null disables automatic pruning.
      |
      | php artisan model:prune --model="D076\Tracing\Models\TracingRequest"
      */

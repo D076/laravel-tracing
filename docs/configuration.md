@@ -40,15 +40,38 @@ php artisan vendor:publish --tag=tracing-config
 |----------|---------|-------------|
 | `TRACING_UI_ENABLED` | `true` | Enable the UI |
 | `TRACING_UI_PATH` | `tracing` | URL prefix (`/tracing`) |
-| `TRACING_UI_THEME` | `system` | Theme a visitor who has not picked one sees: `system`, `light` or `dark` |
+| `TRACING_UI_THEME` | `system` | Theme a visitor who has not picked one sees: `system`, `light`, `dark` or `bimbo-pink` |
+| `TRACING_UI_ENABLED_THEMES` | *(all)* | Comma-separated list of themes the interface offers, e.g. `light,dark`. Empty offers all of them |
 
 ### UI theme
 
-`system` follows the operating system's `prefers-color-scheme` and switches with it; `light` and `dark` pin the interface regardless of the OS.
+`system` follows the operating system's `prefers-color-scheme` and switches with it; `light` and `dark` pin the interface regardless of the OS. `bimbo-pink` is a light theme in pink, keeping the green/red reading of response classes.
 
 The value is only the **default**. A visitor picks a theme with the switcher in the header, and the choice is stored per browser under the `tracing.theme` key in `localStorage`; from then on it wins over the config. The shell applies the stored value before the first paint, so switching themes does not cost a flash of the wrong one on every load.
 
 A value naming no theme the stylesheet defines — a typo, or a theme removed in an upgrade — falls back to `system` instead of reaching the markup, so a misconfiguration renders the default interface rather than an unstyled one.
+
+### Restricting the themes on offer
+
+`TRACING_UI_ENABLED_THEMES` narrows what the switcher shows. Left empty — the default — it offers every theme the stylesheet ships. `TRACING_UI_ENABLED_THEMES=light,dark` offers those two and nothing else; an application that publishes the config can write the same as an array under `tracing.ui.enabled_themes`. An id naming no theme in the registry is ignored rather than treated as an error.
+
+`system` is not a palette. It is the rule "follow `prefers-color-scheme`", which is a choice *between* `light` and `dark` — so its availability is **inferred, not configured**. Listing it while either of the two is switched off leaves a switch that changes nothing, so it is dropped:
+
+| `TRACING_UI_ENABLED_THEMES` | Offered |
+|---|---|
+| *(empty)* | `system`, `light`, `dark`, `bimbo-pink` |
+| `system,light,dark` | `system`, `light`, `dark` |
+| `system,light` | `light` — `system` has no dark half to switch to |
+| `light,dark` | `light`, `dark` — `system` was not asked for |
+| `sepia` | `light` — see below |
+
+The list never empties out. A value that would leave nothing — only unknown ids, or only `system` with nothing to derive from — falls back to `light`, because an interface with no palette is worse than one whose config was ignored.
+
+The **default** (`TRACING_UI_THEME`) is reconciled against the same list: if it names a theme that is not on offer, the interface opens with `system` when that is available, and otherwise with the first theme that is. A visitor's stored choice is validated against the list too, so a theme switched off after they picked it stops applying on their next load.
+
+Withdrawing a theme does not remove its palette from the compiled stylesheet — those few kilobytes ship in `app.css` regardless, since stripping them would mean generating the CSS per installation at runtime. The configuration decides what the interface *offers*, not what the bundle contains.
+
+If exactly one theme remains, the switcher is not rendered at all.
 
 ### UI authorization
 
