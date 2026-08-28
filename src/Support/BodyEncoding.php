@@ -42,6 +42,9 @@ use ValueError;
  */
 final class BodyEncoding
 {
+    /** Appended to a body that did not fit its byte budget. */
+    public const TRUNCATION_MARKER = '...[truncated]';
+
     public static function toUtf8(string $content, ?string $contentType = null): string
     {
         return self::asUtf8($content, self::charsetFromContentType($contentType))
@@ -162,7 +165,7 @@ final class BodyEncoding
     public static function truncateBytes(string $content, int $maxBytes): string
     {
         return $maxBytes > 0 && strlen($content) > $maxBytes
-            ? mb_strcut($content, 0, $maxBytes, 'UTF-8') . '...[truncated]'
+            ? mb_strcut($content, 0, $maxBytes, 'UTF-8') . self::TRUNCATION_MARKER
             : $content;
     }
 

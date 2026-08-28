@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 While the package is on `0.x`, minor versions may contain breaking changes; patch versions never do.
 
+## [0.5.1] - 2026-08-28
+
+### Added
+- Outgoing request details now show **query parameters** as a block of their own, the way inbound requests have always shown them, instead of leaving them buried in a long URL ([#4](https://github.com/D076/laravel-tracing/issues/4)). An API called only over `GET` with a dozen filtering parameters is readable again.
+- A body sent as `application/x-www-form-urlencoded` is displayed as **fields rather than one line** ([#5](https://github.com/D076/laravel-tracing/issues/5)); the same applies to a form-encoded response body. The raw string stays one click away behind a *Raw* toggle, since for an audit trail the exact bytes that went on the wire are sometimes the point. A body cut at `max_body_size` is labelled *truncated*, because its last field is incomplete and the parsed view would otherwise state it as fact.
+
+Neither is a schema change: the URL and the bodies are already stored raw, so `GET /tracing/api/outgoing/{id}` derives `query_params`, `request_body_params` and `response_body_params` when it reads the record. No migration to run, and records written by earlier versions display the same way. Parsing goes through PHP's `parse_str`, matching how the inbound side records the identical syntax, so bracket nesting and repeated keys look the same on both halves of a trace. Masking is unaffected — it happens on write, so a masked field shows its `[REDACTED]` placeholder in the parsed view too.
+
 ## [0.5.0] - 2026-07-31
 
 ### Added
@@ -157,6 +165,7 @@ Initial release.
 - Retention via `php artisan model:prune` (`tracing.retention_days`, default 30).
 - Cross-database SQL compatibility: PostgreSQL, MySQL, SQLite.
 
+[0.5.1]: https://github.com/d076/laravel-tracing/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/d076/laravel-tracing/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/d076/laravel-tracing/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/d076/laravel-tracing/compare/v0.3.2...v0.3.3

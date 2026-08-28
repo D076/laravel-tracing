@@ -16,6 +16,8 @@ const loading = ref(true)
 const error = ref(null)
 const copied = ref(false)
 const shared = ref(false)
+const rawRequestBody = ref(false)
+const rawResponseBody = ref(false)
 
 onMounted(async () => {
     try {
@@ -111,9 +113,21 @@ async function share() {
                         <div class="text-xs text-gray-400 mb-1.5">Headers</div>
                         <JsonViewer :data="record.request_headers" />
                     </div>
+                    <div v-if="record.query_params">
+                        <div class="text-xs text-gray-400 mb-1.5">Query Params</div>
+                        <JsonViewer :data="record.query_params" />
+                    </div>
                     <div v-if="record.request_body">
-                        <div class="text-xs text-gray-400 mb-1.5">Body</div>
-                        <JsonViewer :data="record.request_body" />
+                        <div class="text-xs text-gray-400 mb-1.5 flex items-center gap-2">
+                            <span>Body</span>
+                            <span v-if="record.request_body_truncated" class="text-amber-600">truncated</span>
+                            <button
+                                v-if="record.request_body_params"
+                                @click="rawRequestBody = !rawRequestBody"
+                                class="text-gray-400 hover:text-gray-700 transition-colors"
+                            >{{ rawRequestBody ? 'Parsed' : 'Raw' }}</button>
+                        </div>
+                        <JsonViewer :data="rawRequestBody ? record.request_body : (record.request_body_params ?? record.request_body)" />
                     </div>
                 </div>
             </div>
@@ -127,8 +141,16 @@ async function share() {
                         <JsonViewer :data="record.response_headers" />
                     </div>
                     <div v-if="record.response_body">
-                        <div class="text-xs text-gray-400 mb-1.5">Body</div>
-                        <JsonViewer :data="record.response_body" />
+                        <div class="text-xs text-gray-400 mb-1.5 flex items-center gap-2">
+                            <span>Body</span>
+                            <span v-if="record.response_body_truncated" class="text-amber-600">truncated</span>
+                            <button
+                                v-if="record.response_body_params"
+                                @click="rawResponseBody = !rawResponseBody"
+                                class="text-gray-400 hover:text-gray-700 transition-colors"
+                            >{{ rawResponseBody ? 'Parsed' : 'Raw' }}</button>
+                        </div>
+                        <JsonViewer :data="rawResponseBody ? record.response_body : (record.response_body_params ?? record.response_body)" />
                     </div>
                 </div>
             </div>

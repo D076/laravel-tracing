@@ -33,15 +33,28 @@
 | `trace_id` | Soft reference to `tracing_requests.id` (nullable — CLI/jobs) |
 | `tags` | Application-defined tags, JSON array of strings (nullable) — see [Configuration → Tags](configuration.md#tags) |
 | `method` | HTTP method |
-| `url` | Full URL |
+| `url` | Full URL, query string included |
 | `request_headers` | Headers (sensitive ones — `[REDACTED]`) |
-| `request_body` | Request body (optional) |
+| `request_body` | Request body (optional), stored exactly as it went on the wire |
 | `response_status` | HTTP status, `null` on connection errors |
 | `response_headers` | Response headers |
 | `response_body` | Response body (optional) |
 | `exception_class` | Exception FQCN (ConnectException, TransferException, etc.) |
 | `exception_message` | Message |
 | `duration_ms` | Request duration in milliseconds |
+
+Unlike the inbound table, this one has no `query_params` / `body_params` columns.
+Query parameters live inside `url` and form fields inside `request_body`, and the
+UI derives both when it reads a record: the query string is parsed out of the URL,
+and a body sent as `application/x-www-form-urlencoded` is shown as fields rather
+than as one long line. Parsing goes through PHP's own `parse_str`, so bracket
+syntax (`filter[city]=msk`, `ids[]=1&ids[]=2`) renders the same way it does for an
+inbound request — including `parse_str`'s habit of rewriting dots and spaces in
+top-level keys to underscores. A JSON or multipart body keeps its raw form.
+
+Deriving rather than storing means records written by earlier versions display the
+same way, at the cost of not being able to filter on a single query parameter
+server-side; `?search=`/`?payload=` still match against the URL and the raw body.
 
 ## Schema
 

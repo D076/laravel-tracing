@@ -4,6 +4,7 @@ namespace D076\Tracing\Http\Controllers;
 
 use D076\Tracing\Models\TracingRequest;
 use D076\Tracing\Models\OutgoingRequest;
+use D076\Tracing\Support\RequestParams;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
@@ -234,6 +235,11 @@ final class TracingApiController extends Controller
         ]);
     }
 
+    /**
+     * Query parameters and form fields are derived here rather than stored:
+     * the URL and the bodies are kept raw, so the readable shape is a view over
+     * them that also applies to records written before this endpoint grew it.
+     */
     public function outgoingShow(string $id): JsonResponse
     {
         $record = OutgoingRequest::findOrFail($id);
@@ -245,17 +251,40 @@ final class TracingApiController extends Controller
                 'tags' => $record->tags,
                 'method' => $record->method,
                 'url' => $record->url,
+                'query_params' => RequestParams::queryFromUrl($record->url),
                 'request_headers' => $record->request_headers,
                 'request_body' => $record->request_body,
+                'request_body_params' => $this->formParams($record->request_body, $record->request_headers),
+                'request_body_truncated' => $record->request_body !== null
+                    && RequestParams::isTruncated($record->request_body),
                 'response_status' => $record->response_status,
                 'response_headers' => $record->response_headers,
                 'response_body' => $record->response_body,
+                'response_body_params' => $this->formParams($record->response_body, $record->response_headers),
+                'response_body_truncated' => $record->response_body !== null
+                    && RequestParams::isTruncated($record->response_body),
                 'exception_class' => $record->exception_class,
                 'exception_message' => $record->exception_message,
                 'duration_ms' => $record->duration_ms,
                 'created_at' => $record->created_at->toIso8601String(),
             ],
         ]);
+    }
+
+    /**
+     * Fields of a form-encoded body. Any other content type keeps its raw string:
+     * JSON already renders as a tree in the UI, multipart does not parse this way.
+     *
+     * @param  array<string, list<string>>|null  $headers
+     * @return array<string, mixed>|null
+     */
+    private function formParams(?string $body, ?array $headers): ?array
+    {
+        if ($body === null || !RequestParams::isFormUrlEncoded(RequestParams::contentTypeFrom($headers))) {
+            return null;
+        }
+
+        return RequestParams::formBody($body);
     }
 
     /**
