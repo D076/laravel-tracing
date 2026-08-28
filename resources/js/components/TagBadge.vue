@@ -18,8 +18,8 @@ function onClick(e) {
     <span
         @click="onClick"
         :class="[
-            'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium border border-indigo-100 bg-indigo-50 text-indigo-700 whitespace-nowrap',
-            clickable ? 'cursor-pointer hover:bg-indigo-100' : '',
+            'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium border border-tag-line bg-tag text-tag-fg whitespace-nowrap',
+            clickable ? 'cursor-pointer hover:bg-tag-hover' : '',
         ]"
         :title="clickable ? 'Filter by this tag' : tag"
     >{{ tag }}</span>

@@ -8,6 +8,7 @@ use D076\Tracing\Services\TracingService;
 use D076\Tracing\Support\BodyEncoding;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Symfony\Component\HttpFoundation\Response;
 
 final class TracingMiddleware
@@ -34,7 +35,6 @@ final class TracingMiddleware
         $this->context->traceId = $this->traceId->get();
         $this->context->method = $request->method();
         $this->context->url = $request->fullUrl();
-        $this->context->ipAddress = $request->ip();
         // Parameters and headers arrive already parsed, so toUtf8() does not apply:
         // a legacy client sending charset=windows-1251 puts its bytes inside
         // individual values. Unnormalized they survive the write only as U+FFFD.
@@ -65,6 +65,11 @@ final class TracingMiddleware
         $route = $request->route();
         $this->context->routeName = $route?->getName();
         $this->context->routePath = $route?->uri();
+
+        // Read here rather than in handle(): the provider prepends this
+        // middleware, so at handle() time TrustProxies has not run yet and
+        // ip() still answers REMOTE_ADDR — the load balancer, not the client.
+        $this->context->ipAddress = $request->ip();
 
         if ($user = $request->user()) {
             $this->context->authenticatableId = $user->getKey();
@@ -110,10 +115,19 @@ final class TracingMiddleware
             return null;
         }
 
+        // The body, and only the body. $request->all() (which except() reads)
+        // merges the query string in, so a POST with a query string recorded its
+        // query parameters a second time as fields the client never put in a
+        // body. The branch is load-bearing: $request->request is empty for a
+        // JSON body, and reading it alone would stop recording JSON bodies.
+        $body = $request->isJson()
+            ? $request->json()->all()
+            : $request->request->all();
+
         // Uploaded files are dropped rather than serialized. No media-type check:
         // allFiles() is empty on anything that is not a file upload, so except()
-        // degrades to all() on its own — and an upload arriving under a
+        // degrades to a no-op on its own — and an upload arriving under a
         // Content-Type we did not anticipate is covered too.
-        return $request->except(array_keys($request->allFiles())) ?: null;
+        return Arr::except($body, array_keys($request->allFiles())) ?: null;
     }
 }

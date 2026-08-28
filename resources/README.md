@@ -20,9 +20,11 @@ resources/
 │   ├── App.vue                 # Root-компонент, хедер с навигацией
 │   ├── api.js                  # fetch-обёртки для всех API-эндпоинтов
 │   ├── utils.js                # Форматирование: duration, time, CSS-классы
+│   ├── themes.js               # Реестр тем для SPA (обёртка над themes.json)
 │   ├── components/
 │   │   ├── StatusBadge.vue     # Цветной badge HTTP-статуса (2xx/4xx/5xx)
 │   │   ├── MethodBadge.vue     # Цветной badge метода (GET/POST/...)
+│   │   ├── ThemeSwitcher.vue   # Переключатель тем в шапке
 │   │   └── JsonViewer.vue      # <pre> с форматированным JSON, max-h с прокруткой
 │   └── pages/
 │       ├── RequestsList.vue    # Список входящих запросов с фильтрами
@@ -30,7 +32,9 @@ resources/
 │       ├── OutgoingList.vue    # Список исходящих запросов с фильтрами
 │       └── OutgoingDetail.vue  # Детальная исходящего + ссылка на входящий
 ├── css/
-│   └── app.css                 # @tailwind base/components/utilities
+│   ├── app.css                 # @import themes.css + @tailwind base/components/utilities
+│   └── themes.css              # Палитры тем — CSS-переменные --tr-*
+├── themes.json                 # Список тем (id/label/icon) — читают и PHP, и JS
 ├── views/
 │   └── index.blade.php         # SPA-шелл: <div id="app"> + window.__monitoring
 ├── dist/                       # Pre-built assets — коммитятся в репо
@@ -102,14 +106,16 @@ timeAgo(iso)         // '5s ago', '3m ago', '2h ago' — для таблицы
 <StatusBadge :status="500" />   <!-- красный -->
 ```
 
-Цвета: `2xx` → emerald, `3xx` → sky, `4xx` → amber, `5xx` → red.
+Цвета берутся из токенов `status-success` / `status-info` / `status-warning` / `status-error` — тема может их перекрасить, не меняя семантику.
 
 ### `MethodBadge`
 
 ```vue
-<MethodBadge method="GET" />    <!-- синий -->
-<MethodBadge method="DELETE" /> <!-- красный -->
+<MethodBadge method="GET" />    <!-- токен method-get -->
+<MethodBadge method="DELETE" /> <!-- токен method-delete -->
 ```
+
+Группа токенов `method-*` намеренно отдельна от `status-*`: тему можно перекрасить по HTTP-глаголам, не трогая смысл 2xx/5xx.
 
 ### `JsonViewer`
 
@@ -133,6 +139,22 @@ const [main, out] = await Promise.all([
 Если исходящие запросы есть — показывается секция **Outgoing HTTP** перед Meta.
 
 `OutgoingDetail.vue` отображает `trace_id` как кликабельную ссылку на родительский входящий запрос (`RouterLink to="/:trace_id"`).
+
+## Темы
+
+Цвет никогда не попадает в компонент палитровым утилем Tailwind. Компоненты используют семантические классы — `bg-surface`, `text-fg-faint`, `border-line-input`, `bg-status-error`, `text-method-get-fg`, — которые `tailwind.config.js` разворачивает в `rgb(var(--tr-*) / <alpha-value>)`. Тема — это только набор значений для этих переменных. Переменные хранят **каналы** RGB, а не готовый цвет: именно поэтому продолжают работать модификаторы прозрачности вида `bg-surface/50`.
+
+Тема выбирается атрибутом `data-theme` на `<html>`, а не через `darkMode: 'class'` — у последнего ровно два состояния, и на третью тему он не расширяется.
+
+### Как добавить тему
+
+1. **Блок переменных** в `css/themes.css` — скопировать `[data-theme='dark']`, перекрасить, обязательно задать `color-scheme` (без него в тёмной теме остаются светлые нативные скроллбары, автозаполнение и календарь в `<input type="date">`).
+2. **Строка в `themes.json`** — `id` (совпадает с селектором из шага 1), `label` для подсказки и `icon` — атрибут `d` одного контура в `viewBox="0 0 24 24"`, рисуется обводкой.
+3. **`npm run build`** и закоммитить `dist/`.
+
+Правки в `.vue` не нужны — ни одной. Тест `tests/Unit/Ui/ThemeTokensTest.php` падает, если в `js/` появляется сырой палитровый утиль вроде `bg-gray-200`, и проверяет, что у каждой темы из `themes.json` есть блок в `themes.css`.
+
+`themes.json` читает и PHP (`D076\Tracing\Support\Theme`): Blade-шелл рендерит `data-theme` из `tracing.ui.theme`, отбрасывая неизвестное значение в `system`, и его инлайн-скрипт сверяет с этим же списком то, что лежит в `localStorage`. Поэтому список тем существует ровно в одном месте.
 
 ## Как добавить новую страницу
 

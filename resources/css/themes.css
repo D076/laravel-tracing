@@ -1,0 +1,218 @@
+/*
+ * Theme palettes.
+ *
+ * Every colour the SPA uses is one of these tokens; components never name a
+ * Tailwind palette shade (tests/Unit/Ui/ThemeTokensTest.php enforces that).
+ * Channels are stored as space-separated RGB triples rather than as `#rrggbb`
+ * so Tailwind can compose them with an alpha modifier — `bg-surface/50` expands
+ * to `rgb(var(--tr-surface) / 0.5)`, which a hex value could not do.
+ *
+ * Adding a theme:
+ *   1. copy one block below, keyed by `[data-theme='<id>']`, and retune it;
+ *   2. add the id, label and icon to resources/themes.json;
+ *   3. rebuild (`npm run build`).
+ * No component changes — that is the point of the token layer.
+ *
+ * `color-scheme` is part of a theme, not decoration: without it the browser
+ * keeps painting scrollbars, form controls and autofill in the light scheme.
+ *
+ * The dark palette appears twice on purpose. `system` has to react to
+ * `prefers-color-scheme` at the media-query level, and `dark` has to win over
+ * the OS when the visitor pins it; CSS has no way to share one declaration
+ * block between a conditional and an unconditional selector.
+ */
+
+:root,
+[data-theme='light'] {
+    color-scheme: light;
+
+    --tr-canvas: 249 250 251;
+    --tr-surface: 255 255 255;
+    --tr-surface-sunken: 243 244 246;
+
+    --tr-border-subtle: 243 244 246;
+    --tr-border: 229 231 235;
+    --tr-border-input: 209 213 219;
+    --tr-border-input-hover: 107 114 128;
+
+    --tr-text-strong: 17 24 39;
+    --tr-text-body: 55 65 81;
+    --tr-text-muted: 107 114 128;
+    --tr-text-faint: 156 163 175;
+
+    --tr-ring-focus: 156 163 175;
+
+    --tr-accent: 31 41 55;
+    --tr-accent-fg: 255 255 255;
+    --tr-accent-hover: 17 24 39;
+
+    --tr-link: 37 99 235;
+    --tr-link-hover: 30 64 175;
+    --tr-link-bg: 239 246 255;
+
+    --tr-status-success-bg: 209 250 229;
+    --tr-status-success-fg: 4 120 87;
+    --tr-status-info-bg: 219 234 254;
+    --tr-status-info-fg: 29 78 216;
+    --tr-status-warning-bg: 254 243 199;
+    --tr-status-warning-fg: 180 83 9;
+    --tr-status-error-bg: 254 226 226;
+    --tr-status-error-fg: 185 28 28;
+
+    --tr-method-get-bg: 224 242 254;
+    --tr-method-get-fg: 3 105 161;
+    --tr-method-post-bg: 209 250 229;
+    --tr-method-post-fg: 4 120 87;
+    --tr-method-put-bg: 254 243 199;
+    --tr-method-put-fg: 180 83 9;
+    --tr-method-patch-bg: 255 237 213;
+    --tr-method-patch-fg: 194 65 12;
+    --tr-method-delete-bg: 254 226 226;
+    --tr-method-delete-fg: 185 28 28;
+    --tr-method-other-bg: 243 244 246;
+    --tr-method-other-fg: 75 85 99;
+
+    --tr-tag-bg: 238 242 255;
+    --tr-tag-bg-hover: 224 231 255;
+    --tr-tag-border: 224 231 255;
+    --tr-tag-fg: 67 56 202;
+
+    --tr-danger-surface: 254 242 242;
+    --tr-danger-border: 254 202 202;
+    --tr-danger-text: 185 28 28;
+    --tr-danger-text-strong: 153 27 27;
+    --tr-danger-faint: 248 113 113;
+
+    --tr-metric-warn: 217 119 6;
+    --tr-metric-bad: 220 38 38;
+}
+
+@media (prefers-color-scheme: dark) {
+    [data-theme='system'] {
+        color-scheme: dark;
+
+        --tr-canvas: 13 15 18;
+        --tr-surface: 23 26 31;
+        --tr-surface-sunken: 31 35 41;
+
+        --tr-border-subtle: 38 43 50;
+        --tr-border: 47 53 61;
+        --tr-border-input: 61 68 78;
+        --tr-border-input-hover: 122 133 147;
+
+        --tr-text-strong: 240 243 247;
+        --tr-text-body: 202 209 219;
+        --tr-text-muted: 148 158 171;
+        --tr-text-faint: 110 120 133;
+
+        --tr-ring-focus: 122 133 147;
+
+        --tr-accent: 226 232 240;
+        --tr-accent-fg: 17 20 24;
+        --tr-accent-hover: 248 250 252;
+
+        --tr-link: 96 165 250;
+        --tr-link-hover: 147 197 253;
+        --tr-link-bg: 23 37 66;
+
+        --tr-status-success-bg: 6 46 33;
+        --tr-status-success-fg: 110 231 183;
+        --tr-status-info-bg: 12 34 74;
+        --tr-status-info-fg: 147 197 253;
+        --tr-status-warning-bg: 60 38 6;
+        --tr-status-warning-fg: 252 211 77;
+        --tr-status-error-bg: 63 18 20;
+        --tr-status-error-fg: 252 165 165;
+
+        --tr-method-get-bg: 7 39 62;
+        --tr-method-get-fg: 125 211 252;
+        --tr-method-post-bg: 6 46 33;
+        --tr-method-post-fg: 110 231 183;
+        --tr-method-put-bg: 60 38 6;
+        --tr-method-put-fg: 252 211 77;
+        --tr-method-patch-bg: 61 30 6;
+        --tr-method-patch-fg: 253 186 116;
+        --tr-method-delete-bg: 63 18 20;
+        --tr-method-delete-fg: 252 165 165;
+        --tr-method-other-bg: 38 43 50;
+        --tr-method-other-fg: 148 158 171;
+
+        --tr-tag-bg: 27 28 61;
+        --tr-tag-bg-hover: 40 42 84;
+        --tr-tag-border: 49 46 105;
+        --tr-tag-fg: 165 180 252;
+
+        --tr-danger-surface: 45 15 16;
+        --tr-danger-border: 92 30 33;
+        --tr-danger-text: 252 165 165;
+        --tr-danger-text-strong: 254 202 202;
+        --tr-danger-faint: 217 119 119;
+
+        --tr-metric-warn: 251 191 36;
+        --tr-metric-bad: 248 113 113;
+    }
+}
+
+[data-theme='dark'] {
+    color-scheme: dark;
+
+    --tr-canvas: 13 15 18;
+    --tr-surface: 23 26 31;
+    --tr-surface-sunken: 31 35 41;
+
+    --tr-border-subtle: 38 43 50;
+    --tr-border: 47 53 61;
+    --tr-border-input: 61 68 78;
+    --tr-border-input-hover: 122 133 147;
+
+    --tr-text-strong: 240 243 247;
+    --tr-text-body: 202 209 219;
+    --tr-text-muted: 148 158 171;
+    --tr-text-faint: 110 120 133;
+
+    --tr-ring-focus: 122 133 147;
+
+    --tr-accent: 226 232 240;
+    --tr-accent-fg: 17 20 24;
+    --tr-accent-hover: 248 250 252;
+
+    --tr-link: 96 165 250;
+    --tr-link-hover: 147 197 253;
+    --tr-link-bg: 23 37 66;
+
+    --tr-status-success-bg: 6 46 33;
+    --tr-status-success-fg: 110 231 183;
+    --tr-status-info-bg: 12 34 74;
+    --tr-status-info-fg: 147 197 253;
+    --tr-status-warning-bg: 60 38 6;
+    --tr-status-warning-fg: 252 211 77;
+    --tr-status-error-bg: 63 18 20;
+    --tr-status-error-fg: 252 165 165;
+
+    --tr-method-get-bg: 7 39 62;
+    --tr-method-get-fg: 125 211 252;
+    --tr-method-post-bg: 6 46 33;
+    --tr-method-post-fg: 110 231 183;
+    --tr-method-put-bg: 60 38 6;
+    --tr-method-put-fg: 252 211 77;
+    --tr-method-patch-bg: 61 30 6;
+    --tr-method-patch-fg: 253 186 116;
+    --tr-method-delete-bg: 63 18 20;
+    --tr-method-delete-fg: 252 165 165;
+    --tr-method-other-bg: 38 43 50;
+    --tr-method-other-fg: 148 158 171;
+
+    --tr-tag-bg: 27 28 61;
+    --tr-tag-bg-hover: 40 42 84;
+    --tr-tag-border: 49 46 105;
+    --tr-tag-fg: 165 180 252;
+
+    --tr-danger-surface: 45 15 16;
+    --tr-danger-border: 92 30 33;
+    --tr-danger-text: 252 165 165;
+    --tr-danger-text-strong: 254 202 202;
+    --tr-danger-faint: 217 119 119;
+
+    --tr-metric-warn: 251 191 36;
+    --tr-metric-bad: 248 113 113;
+}

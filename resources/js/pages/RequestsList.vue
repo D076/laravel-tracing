@@ -183,7 +183,7 @@ onMounted(load)
 
 <template>
     <!-- Filters -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4 mb-4 space-y-3">
+    <div class="bg-surface rounded-xl border border-line p-4 mb-4 space-y-3">
         <div class="flex flex-wrap items-center gap-2">
             <!-- Status group buttons -->
             <div class="flex gap-1">
@@ -194,8 +194,8 @@ onMounted(load)
                     :class="[
                         'px-2.5 py-1 rounded text-xs font-medium border transition-colors',
                         filters.status_group.includes(g)
-                            ? 'bg-gray-800 text-white border-gray-800'
-                            : 'bg-white text-gray-600 border-gray-300 hover:border-gray-500',
+                            ? 'bg-accent text-accent-fg border-accent'
+                            : 'bg-surface text-fg-muted border-line-input hover:border-line-input-hover',
                     ]"
                 >{{ g }}</button>
             </div>
@@ -203,14 +203,14 @@ onMounted(load)
             <!-- Method select -->
             <select
                 v-model="filters.method"
-                class="text-sm border border-gray-300 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                class="text-sm border border-line-input rounded px-2 py-1 bg-surface text-fg focus:outline-none focus:ring-1 focus:ring-focus"
             >
                 <option value="">All methods</option>
                 <option v-for="m in METHODS" :key="m">{{ m }}</option>
             </select>
 
             <!-- Exceptions only -->
-            <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer select-none">
+            <label class="flex items-center gap-1.5 text-sm text-fg-muted cursor-pointer select-none">
                 <input type="checkbox" v-model="filters.has_exception" class="rounded" />
                 Exceptions only
             </label>
@@ -218,7 +218,7 @@ onMounted(load)
             <button
                 v-if="hasActiveFilters"
                 @click="clearFilters"
-                class="ml-auto text-xs text-gray-400 hover:text-gray-700 underline"
+                class="ml-auto text-xs text-fg-faint hover:text-fg underline"
             >Clear filters</button>
         </div>
 
@@ -227,113 +227,113 @@ onMounted(load)
                 v-model="filters.route_path"
                 @input="scheduleLoad"
                 placeholder="Route path..."
-                class="text-sm border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-gray-400 w-44"
+                class="text-sm border border-line-input rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-focus w-44"
             />
 
             <input
                 type="date"
                 v-model="filters.date_from"
-                class="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                class="text-sm border border-line-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-focus"
             />
-            <span class="text-gray-400 text-sm">—</span>
+            <span class="text-fg-faint text-sm">—</span>
             <input
                 type="date"
                 v-model="filters.date_to"
-                class="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                class="text-sm border border-line-input rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-focus"
             />
 
             <input
                 v-model="filters.search"
                 @input="scheduleLoad"
                 placeholder="Trace ID, URL, header, or tag..."
-                class="text-sm border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-gray-400 flex-1 min-w-52"
+                class="text-sm border border-line-input rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-focus flex-1 min-w-52"
             />
 
             <button
                 @click="load"
-                class="text-sm px-3 py-1 rounded border border-gray-300 hover:bg-gray-50 text-gray-600"
+                class="text-sm px-3 py-1 rounded border border-line-input hover:bg-surface-sunken text-fg-muted"
                 title="Refresh"
             >↻</button>
         </div>
 
         <!-- Deep search: scans bodies, so it only runs on Enter / button -->
-        <div class="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+        <div class="flex flex-wrap items-center gap-2 border-t border-line-subtle pt-3">
             <input
                 v-model="payloadInput"
                 @keyup.enter="runPayloadSearch"
                 placeholder="Deep search: bodies, params, headers..."
-                class="text-sm border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-gray-400 flex-1 min-w-52"
+                class="text-sm border border-line-input rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-focus flex-1 min-w-52"
             />
             <button
                 @click="runPayloadSearch"
-                class="text-sm px-3 py-1 rounded border border-gray-300 hover:bg-gray-50 text-gray-600 whitespace-nowrap"
+                class="text-sm px-3 py-1 rounded border border-line-input hover:bg-surface-sunken text-fg-muted whitespace-nowrap"
             >Search</button>
-            <span class="text-xs text-gray-400">Scans request/response bodies — slow on large datasets</span>
+            <span class="text-xs text-fg-faint">Scans request/response bodies — slow on large datasets</span>
         </div>
 
         <!-- Active tag filter -->
-        <div v-if="filters.tag" class="flex items-center gap-1.5 text-xs text-gray-500">
+        <div v-if="filters.tag" class="flex items-center gap-1.5 text-xs text-fg-muted">
             <span>Tag:</span>
             <TagBadge :tag="filters.tag" />
-            <button @click="filters.tag = ''" class="text-gray-400 hover:text-gray-700" title="Clear tag filter">×</button>
+            <button @click="filters.tag = ''" class="text-fg-faint hover:text-fg" title="Clear tag filter">×</button>
         </div>
 
         <!-- Active deep search -->
-        <div v-if="filters.payload" class="flex items-center gap-1.5 text-xs text-gray-500">
+        <div v-if="filters.payload" class="flex items-center gap-1.5 text-xs text-fg-muted">
             <span>Deep search:</span>
-            <code class="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">{{ filters.payload }}</code>
+            <code class="font-mono bg-surface-sunken px-1.5 py-0.5 rounded text-fg">{{ filters.payload }}</code>
             <button
                 @click="filters.payload = ''; payloadInput = ''"
-                class="text-gray-400 hover:text-gray-700"
+                class="text-fg-faint hover:text-fg"
                 title="Clear deep search"
             >×</button>
         </div>
     </div>
 
     <!-- Table -->
-    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div v-if="loading" class="flex items-center justify-center py-16 text-gray-400 text-sm">Loading...</div>
-        <div v-else-if="error" class="flex items-center justify-center py-16 text-red-500 text-sm">{{ error }}</div>
-        <div v-else-if="requests.length === 0" class="flex items-center justify-center py-16 text-gray-400 text-sm">No requests found.</div>
+    <div class="bg-surface rounded-xl border border-line overflow-hidden">
+        <div v-if="loading" class="flex items-center justify-center py-16 text-fg-faint text-sm">Loading...</div>
+        <div v-else-if="error" class="flex items-center justify-center py-16 text-danger text-sm">{{ error }}</div>
+        <div v-else-if="requests.length === 0" class="flex items-center justify-center py-16 text-fg-faint text-sm">No requests found.</div>
 
         <table v-else class="w-full text-sm">
             <thead>
-                <tr class="border-b border-gray-200 bg-gray-50">
-                    <th class="text-left font-medium text-gray-500 px-4 py-3 w-[90px]">Method</th>
+                <tr class="border-b border-line bg-surface-sunken">
+                    <th class="text-left font-medium text-fg-muted px-4 py-3 w-[90px]">Method</th>
                     <th
-                        class="text-left font-medium text-gray-500 px-4 py-3 w-[90px] cursor-pointer hover:text-gray-800 select-none"
+                        class="text-left font-medium text-fg-muted px-4 py-3 w-[90px] cursor-pointer hover:text-fg select-none"
                         @click="toggleSort('response_status')"
-                    >Status <span class="text-gray-400">{{ sort === 'response_status' ? (direction === 'desc' ? '↓' : '↑') : '' }}</span></th>
-                    <th class="text-left font-medium text-gray-500 px-4 py-3">Route / URL</th>
+                    >Status <span class="text-fg-faint">{{ sort === 'response_status' ? (direction === 'desc' ? '↓' : '↑') : '' }}</span></th>
+                    <th class="text-left font-medium text-fg-muted px-4 py-3">Route / URL</th>
                     <th
-                        class="text-left font-medium text-gray-500 px-4 py-3 w-[110px] cursor-pointer hover:text-gray-800 select-none"
+                        class="text-left font-medium text-fg-muted px-4 py-3 w-[110px] cursor-pointer hover:text-fg select-none"
                         @click="toggleSort('duration_ms')"
-                    >Duration <span class="text-gray-400">{{ sort === 'duration_ms' ? (direction === 'desc' ? '↓' : '↑') : '' }}</span></th>
-                    <th class="text-left font-medium text-gray-500 px-4 py-3 w-[120px]">IP</th>
+                    >Duration <span class="text-fg-faint">{{ sort === 'duration_ms' ? (direction === 'desc' ? '↓' : '↑') : '' }}</span></th>
+                    <th class="text-left font-medium text-fg-muted px-4 py-3 w-[120px]">IP</th>
                     <th
-                        class="text-left font-medium text-gray-500 px-4 py-3 w-[120px] cursor-pointer hover:text-gray-800 select-none"
+                        class="text-left font-medium text-fg-muted px-4 py-3 w-[120px] cursor-pointer hover:text-fg select-none"
                         @click="toggleSort('created_at')"
-                    >Time <span class="text-gray-400">{{ sort === 'created_at' ? (direction === 'desc' ? '↓' : '↑') : '' }}</span></th>
+                    >Time <span class="text-fg-faint">{{ sort === 'created_at' ? (direction === 'desc' ? '↓' : '↑') : '' }}</span></th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100">
+            <tbody class="divide-y divide-line-subtle">
                 <tr
                     v-for="r in requests"
                     :key="r.id"
                     @click="openRow(r, $event)"
                     @auxclick="openRow(r, $event)"
-                    class="group hover:bg-gray-50 cursor-pointer transition-colors"
+                    class="group hover:bg-surface-sunken cursor-pointer transition-colors"
                 >
                     <td class="px-4 py-3"><MethodBadge :method="r.method" /></td>
                     <td class="px-4 py-3">
                         <div class="flex items-center gap-1.5">
                             <StatusBadge :status="r.response_status" />
-                            <span v-if="r.has_exception" class="text-red-400 text-xs leading-none" title="Exception thrown">⚠</span>
+                            <span v-if="r.has_exception" class="text-danger-faint text-xs leading-none" title="Exception thrown">⚠</span>
                         </div>
                     </td>
                     <td class="px-4 py-3 max-w-0">
-                        <div class="truncate text-xs font-mono text-gray-800">{{ r.route_path ?? r.url }}</div>
-                        <div v-if="r.route_path" class="truncate text-xs text-gray-400 mt-0.5">{{ r.url }}</div>
+                        <div class="truncate text-xs font-mono text-fg">{{ r.route_path ?? r.url }}</div>
+                        <div v-if="r.route_path" class="truncate text-xs text-fg-faint mt-0.5">{{ r.url }}</div>
                         <div v-if="r.tags?.length" class="flex flex-wrap gap-1 mt-1">
                             <TagBadge v-for="t in r.tags" :key="t" :tag="t" clickable @select="filterByTag" />
                         </div>
@@ -343,8 +343,8 @@ onMounted(load)
                             {{ formatDuration(r.duration_ms) }}
                         </span>
                     </td>
-                    <td class="px-4 py-3 text-xs text-gray-500 font-mono">{{ r.ip_address ?? '—' }}</td>
-                    <td class="px-4 py-3 text-xs text-gray-400" :title="formatTime(r.created_at)">
+                    <td class="px-4 py-3 text-xs text-fg-muted font-mono">{{ r.ip_address ?? '—' }}</td>
+                    <td class="px-4 py-3 text-xs text-fg-faint" :title="formatTime(r.created_at)">
                         <div class="flex items-center justify-between gap-2">
                             <span>{{ timeAgo(r.created_at) }}</span>
                             <RouterLink
@@ -352,7 +352,7 @@ onMounted(load)
                                 target="_blank"
                                 @click.stop
                                 @auxclick.stop
-                                class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-700 transition-opacity"
+                                class="opacity-0 group-hover:opacity-100 text-fg-faint hover:text-fg transition-opacity"
                                 title="Open in new tab"
                             >↗</RouterLink>
                         </div>
@@ -363,19 +363,19 @@ onMounted(load)
     </div>
 
     <!-- Pagination -->
-    <div class="mt-4 flex items-center justify-between text-sm text-gray-500">
+    <div class="mt-4 flex items-center justify-between text-sm text-fg-muted">
         <span>{{ meta.total.toLocaleString() }} total</span>
         <div v-if="meta.last_page > 1" class="flex items-center gap-2">
-            <span class="text-gray-400">Page {{ meta.current_page }} of {{ meta.last_page }}</span>
+            <span class="text-fg-faint">Page {{ meta.current_page }} of {{ meta.last_page }}</span>
             <button
                 :disabled="meta.current_page <= 1"
                 @click="page--"
-                class="px-3 py-1 rounded border border-gray-300 disabled:opacity-40 hover:bg-gray-50 disabled:cursor-not-allowed"
+                class="px-3 py-1 rounded border border-line-input disabled:opacity-40 hover:bg-surface-sunken disabled:cursor-not-allowed"
             >← Prev</button>
             <button
                 :disabled="meta.current_page >= meta.last_page"
                 @click="page++"
-                class="px-3 py-1 rounded border border-gray-300 disabled:opacity-40 hover:bg-gray-50 disabled:cursor-not-allowed"
+                class="px-3 py-1 rounded border border-line-input disabled:opacity-40 hover:bg-surface-sunken disabled:cursor-not-allowed"
             >Next →</button>
         </div>
     </div>

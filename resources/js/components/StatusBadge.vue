@@ -3,12 +3,14 @@ import { computed } from 'vue'
 
 const props = defineProps({ status: Number })
 
+// Class names are written out in full: Tailwind scans the source as text and
+// would never see a name assembled at runtime.
 const cls = computed(() => {
     const s = props.status
-    if (s >= 500) return 'bg-red-100 text-red-700'
-    if (s >= 400) return 'bg-amber-100 text-amber-700'
-    if (s >= 300) return 'bg-blue-100 text-blue-700'
-    return 'bg-emerald-100 text-emerald-700'
+    if (s >= 500) return 'bg-status-error text-status-error-fg'
+    if (s >= 400) return 'bg-status-warning text-status-warning-fg'
+    if (s >= 300) return 'bg-status-info text-status-info-fg'
+    return 'bg-status-success text-status-success-fg'
 })
 </script>
 

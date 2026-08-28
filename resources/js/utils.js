@@ -5,10 +5,10 @@ export function formatDuration(ms) {
 }
 
 export function durationClass(ms) {
-    if (ms === null || ms === undefined) return 'text-gray-400'
-    if (ms > 1000) return 'text-red-600 font-medium'
-    if (ms > 500) return 'text-amber-600'
-    return 'text-gray-600'
+    if (ms === null || ms === undefined) return 'text-fg-faint'
+    if (ms > 1000) return 'text-metric-bad font-medium'
+    if (ms > 500) return 'text-metric-warn'
+    return 'text-fg-muted'
 }
 
 export function formatTime(iso) {

@@ -91,6 +91,12 @@ return [
             'password',
             'secret',
             'token',
+            'access_token',
+            'refresh_token',
+            'api_token',
+            'api_key',
+            'client_secret',
+            'private_key',
         ],
         // Поля тела ОТВЕТА внешнего API, заменяемые на '[REDACTED]'. Только JSON-тела.
         // Пустой список — маскирование выключено (тело только усекается).
@@ -100,6 +106,10 @@ return [
             'token',
             'access_token',
             'refresh_token',
+            'api_token',
+            'api_key',
+            'client_secret',
+            'private_key',
         ],
         'ignore_urls' => [],
         'retention_days' => (int) env('TRACING_OUTGOING_RETENTION_DAYS', 30),
@@ -115,6 +125,11 @@ return [
     'ui' => [
         'enabled' => (bool) env('TRACING_UI_ENABLED', true),
         'path' => env('TRACING_UI_PATH', 'tracing'),
+        // Theme the interface opens with for a visitor who has not picked one.
+        // 'system' follows prefers-color-scheme; 'light' and 'dark' pin it.
+        // A value naming no theme the stylesheet defines falls back to 'system'
+        // rather than reaching the markup — see D076\Tracing\Support\Theme.
+        'theme' => env('TRACING_UI_THEME', 'system'),
         'middleware' => ['web'],
     ],
 
@@ -138,7 +153,8 @@ return [
     /*
      | Поля тела запроса, которые заменяются на '[REDACTED]' перед сохранением.
      | Поддерживает dot-нотацию для вложенных ключей: 'user.password'.
-     | Сравнение регистрозависимо.
+     | Сравнение регистрозависимо и идёт по ТОЧНОМУ имени ключа, а не по
+     | подстроке: 'token' не маскирует 'access_token' — каждое имя перечисляется.
      */
     'masked_body_params' => [
         'password',
@@ -146,6 +162,11 @@ return [
         'current_password',
         'secret',
         'token',
+        'access_token',
+        'refresh_token',
+        'api_token',
+        'api_key',
+        'client_secret',
         'private_key',
     ],
 
@@ -180,6 +201,10 @@ return [
         'token',
         'access_token',
         'refresh_token',
+        'api_token',
+        'api_key',
+        'client_secret',
+        'private_key',
     ],
 
     /*

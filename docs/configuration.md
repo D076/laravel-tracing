@@ -40,6 +40,15 @@ php artisan vendor:publish --tag=tracing-config
 |----------|---------|-------------|
 | `TRACING_UI_ENABLED` | `true` | Enable the UI |
 | `TRACING_UI_PATH` | `tracing` | URL prefix (`/tracing`) |
+| `TRACING_UI_THEME` | `system` | Theme a visitor who has not picked one sees: `system`, `light` or `dark` |
+
+### UI theme
+
+`system` follows the operating system's `prefers-color-scheme` and switches with it; `light` and `dark` pin the interface regardless of the OS.
+
+The value is only the **default**. A visitor picks a theme with the switcher in the header, and the choice is stored per browser under the `tracing.theme` key in `localStorage`; from then on it wins over the config. The shell applies the stored value before the first paint, so switching themes does not cost a flash of the wrong one on every load.
+
+A value naming no theme the stylesheet defines — a typo, or a theme removed in an upgrade — falls back to `system` instead of reaching the markup, so a misconfiguration renders the default interface rather than an unstyled one.
 
 ### UI authorization
 
@@ -139,7 +148,7 @@ Sensitive values are replaced with `[REDACTED]` before being written to the data
 ],
 ```
 
-**Request body** — supports dot notation for nested keys; comparison is case-sensitive:
+**Request body** — supports dot notation for nested keys; comparison is case-sensitive and matches the **whole key**, never a substring:
 
 ```php
 // Inbound requests (body_params — array)
@@ -149,16 +158,26 @@ Sensitive values are replaced with `[REDACTED]` before being written to the data
     'current_password',
     'secret',
     'token',
-    'user.password',      // $body['user']['password']
-    'data.api_key',       // $body['data']['api_key']
+    'access_token',
+    'refresh_token',
+    'api_token',
+    'api_key',
+    'client_secret',
+    'private_key',
 ],
 
 // Outbound requests (JSON and application/x-www-form-urlencoded bodies)
 'outgoing' => [
     // request body (request_body)
-    'masked_body_params' => ['password', 'secret', 'token'],
+    'masked_body_params' => [
+        'password', 'secret', 'token', 'access_token', 'refresh_token',
+        'api_token', 'api_key', 'client_secret', 'private_key',
+    ],
     // response body (response_body); empty list disables masking
-    'masked_response_body_params' => ['password', 'secret', 'token', 'access_token', 'refresh_token'],
+    'masked_response_body_params' => [
+        'password', 'secret', 'token', 'access_token', 'refresh_token',
+        'api_token', 'api_key', 'client_secret', 'private_key',
+    ],
 ],
 ```
 
@@ -166,12 +185,21 @@ Sensitive values are replaced with `[REDACTED]` before being written to the data
 
 ```php
 // Inbound responses
-'masked_response_body_params' => ['password', 'secret', 'token', 'access_token', 'refresh_token'],
+'masked_response_body_params' => [
+    'password', 'secret', 'token', 'access_token', 'refresh_token',
+    'api_token', 'api_key', 'client_secret', 'private_key',
+],
 
 // Outbound responses — under the 'outgoing' section (see above)
 ```
 
-> **Note:** `password` masks only the top level. For a nested field, give the full path: `user.password`. For routes with sensitive bodies (e.g. `POST /login`), you can also add the route to `ignore_paths`.
+The two request lists differ by design: `password_confirmation` and `current_password` are things a client *sends*, so they are only on the inbound request list — a response echoing them would be a bug of its own, not a case to plan for.
+
+> **Note:** matching is by exact key name, not by substring — `token` does **not** cover `access_token`, which is why every member of the family is spelled out above. A field named for your own domain (`stripe_token`, `otp`, `pin`) still has to be added by hand.
+
+> **Note:** `password` masks only the top level. For a nested field, give the full path: `user.password` (`$body['user']['password']`), `data.api_key`. For routes with sensitive bodies (e.g. `POST /login`), you can also add the route to `ignore_paths`.
+
+> **Publishing the config freezes these lists.** A published `config/tracing.php` supplies each masking list *whole* — lists are never merged element-by-element with the package's (see the 0.5.0 entry in the changelog). A default gaining a new key in a later release therefore does not reach an application that has published its config; copy the additions across by hand.
 
 > **Form-encoded outbound bodies.** For `application/x-www-form-urlencoded` outbound bodies, masking is dispatched by `Content-Type` and the body is round-tripped through `parse_str` / `http_build_query`. Nested fields follow PHP's bracket syntax (`user[password]=...`) and are addressed via dot notation (`user.password`) in the masked-keys list. Bodies sent without an explicit `Content-Type` are treated as JSON for backward compatibility; bodies with unknown content types are not parsed and pass through unchanged (only truncated).
 

@@ -23,12 +23,12 @@ async function copy() {
 </script>
 
 <template>
-    <div v-if="formatted !== null" class="relative group rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
+    <div v-if="formatted !== null" class="relative group rounded-lg border border-line bg-surface-sunken overflow-hidden">
         <button
             @click="copy"
-            class="absolute top-2 right-5 text-xs px-2 py-0.5 rounded bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-all opacity-0 group-hover:opacity-100 z-10"
+            class="absolute top-2 right-5 text-xs px-2 py-0.5 rounded bg-surface border border-line text-fg-faint hover:text-fg hover:border-line-input transition-all opacity-0 group-hover:opacity-100 z-10"
         >{{ copied ? '✓' : 'Copy' }}</button>
-        <pre class="overflow-auto p-3 text-xs text-gray-800 max-h-80 leading-relaxed">{{ formatted }}</pre>
+        <pre class="overflow-auto p-3 text-xs text-fg max-h-80 leading-relaxed">{{ formatted }}</pre>
     </div>
-    <span v-else class="text-gray-400 text-sm italic">—</span>
+    <span v-else class="text-fg-faint text-sm italic">—</span>
 </template>

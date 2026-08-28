@@ -47,7 +47,8 @@ php artisan vendor:publish --tag=tracing-config
 
 Works out of the box with sensible defaults:
 - synchronous recording of inbound and outbound requests to the database;
-- masking for common secrets (`password`, `token`, `authorization`, `access_token`, etc.);
+- masking of secret **body fields** — `password`, `password_confirmation`, `current_password`, `secret`, `token`, `access_token`, `refresh_token`, `api_token`, `api_key`, `client_secret`, `private_key` — on the inbound request, the response, and both halves of an outbound call. Names are matched **exactly**, not as substrings, so a field of your own (`stripe_token`, `otp`) has to be added to the list;
+- masking of secret **headers**, a separate list matched case-insensitively: `authorization`, `cookie`, `x-api-key`, `x-csrf-token`, `x-xsrf-token`, `php-auth-pw` inbound, `set-cookie` on responses;
 - `X-Trace-Id` header on every response;
 - UI at `/tracing`, accessible only in the `local` environment by default;
 - API rate limit of 120 req/min.

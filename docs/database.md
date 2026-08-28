@@ -14,7 +14,7 @@
 | `route_path` | URI pattern (`/api/users/{id}`), `null` for 404s |
 | `request_headers` | Request headers (sensitive ones — `[REDACTED]`) |
 | `query_params` | Query string parameters |
-| `body_params` | Request body (POST/PUT/PATCH) |
+| `body_params` | Request body (POST/PUT/PATCH) — the body alone; query parameters live in `query_params`, never here |
 | `response_status` | HTTP response status |
 | `response_headers` | Response headers |
 | `response_body` | Response body (optional, see config) |
@@ -22,7 +22,7 @@
 | `authenticatable_id` | Authenticated user id |
 | `authenticatable_type` | User morph type |
 | `duration_ms` | Request handling time in milliseconds |
-| `ip_address` | Client IP (IPv4/IPv6) |
+| `ip_address` | Client IP (IPv4/IPv6) — the forwarded client when the application trusts its proxies, see [architecture](architecture.md) |
 | `user_agent` | User-Agent |
 
 ### `tracing_outgoing_requests` (outbound)

@@ -1,3 +1,16 @@
+@import './themes.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    /* The app shell only covers the viewport, so overscroll and the area behind
+       a short page would otherwise show the user agent's own white. The colour
+       is set explicitly rather than left to `color-scheme` so that untinted
+       text — form fields, table cells — is a token in every theme. */
+    html {
+        background-color: rgb(var(--tr-canvas));
+        color: rgb(var(--tr-text-body));
+    }
+}

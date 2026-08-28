@@ -3,13 +3,15 @@ import { computed } from 'vue'
 
 const props = defineProps({ method: String })
 
+// Verbs carry their own token group rather than reusing the status colours, so
+// a theme can recolour GET and POST without touching what 2xx and 5xx mean.
 const cls = computed(() => ({
-    GET:    'bg-sky-100 text-sky-700',
-    POST:   'bg-emerald-100 text-emerald-700',
-    PUT:    'bg-amber-100 text-amber-700',
-    PATCH:  'bg-orange-100 text-orange-700',
-    DELETE: 'bg-red-100 text-red-700',
-}[props.method] ?? 'bg-gray-100 text-gray-600'))
+    GET:    'bg-method-get text-method-get-fg',
+    POST:   'bg-method-post text-method-post-fg',
+    PUT:    'bg-method-put text-method-put-fg',
+    PATCH:  'bg-method-patch text-method-patch-fg',
+    DELETE: 'bg-method-delete text-method-delete-fg',
+}[props.method] ?? 'bg-method-other text-method-other-fg'))
 </script>
 
 <template>

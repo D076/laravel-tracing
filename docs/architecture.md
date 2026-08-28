@@ -86,9 +86,11 @@ Value object holding the state of a single inbound request. Filled in sequential
 
 | Stage | Source | Filled in |
 |-------|--------|-----------|
-| `handle()` | `TracingMiddleware` | method, url, headers, body, ip, user_agent |
+| `handle()` | `TracingMiddleware` | method, url, headers, body, user_agent |
 | exception | `respondUsing` hook | exception |
-| `terminate()` | `TracingMiddleware` | route_name, route_path, duration_ms |
+| `terminate()` | `TracingMiddleware` | route_name, route_path, user, ip, duration_ms |
+
+`ip_address` is read at `terminate()` rather than at `handle()`. The provider *prepends* the tracing middleware, so it opens the global stack — ahead of `TrustProxies`, which means `$request->ip()` at `handle()` time still answers `REMOTE_ADDR` and would record the load balancer on every request behind one. By `terminate()` the trusted-proxy configuration is in place and the same `Request` object resolves the real client.
 
 ### `Middleware/TraceIdMiddleware`
 
