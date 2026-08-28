@@ -1,5 +1,12 @@
 <?php
 
+/*
+ * Recorded parameters are compared with toEqual, not toBe: the JSON columns are
+ * read back with their keys in whatever order the backend stores them — pgsql
+ * `jsonb` and MySQL `json` both normalise it, SQLite keeps the written order —
+ * and only the pairs are part of the contract, never their order.
+ */
+
 use D076\Tracing\Models\OutgoingRequest;
 use D076\Tracing\Models\TracingRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -47,7 +54,7 @@ describe('inbound request body', function () use ($secrets) {
         $this->postJson('/oauth/token', ['client_id' => 'acme', $key => $value])->assertOk();
 
         expect(TracingRequest::firstOrFail()->body_params)
-            ->toBe(['client_id' => 'acme', $key => '[REDACTED]']);
+            ->toEqual(['client_id' => 'acme', $key => '[REDACTED]']);
     })->with($secrets);
 
     it('leaves an unlisted field alone', function () {
@@ -55,7 +62,7 @@ describe('inbound request body', function () use ($secrets) {
 
         $this->postJson('/oauth/token', ['email' => 'a@b.c'])->assertOk();
 
-        expect(TracingRequest::firstOrFail()->body_params)->toBe(['email' => 'a@b.c']);
+        expect(TracingRequest::firstOrFail()->body_params)->toEqual(['email' => 'a@b.c']);
     });
 });
 

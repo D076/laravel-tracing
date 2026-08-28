@@ -1,5 +1,12 @@
 <?php
 
+/*
+ * Recorded parameters are compared with toEqual, not toBe: the JSON columns are
+ * read back with their keys in whatever order the backend stores them — pgsql
+ * `jsonb` and MySQL `json` both normalise it, SQLite keeps the written order —
+ * and only the pairs are part of the contract, never their order.
+ */
+
 use D076\Tracing\Models\TracingRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -27,7 +34,7 @@ describe('body_params', function () {
             'field' => 'frombody',
         ])->assertOk();
 
-        expect(TracingRequest::firstOrFail()->body_params)->toBe(['field' => 'frombody']);
+        expect(TracingRequest::firstOrFail()->body_params)->toEqual(['field' => 'frombody']);
     });
 
     it('leaves the query string recorded in query_params', function () {
@@ -37,7 +44,7 @@ describe('body_params', function () {
             'field' => 'frombody',
         ])->assertOk();
 
-        expect(TracingRequest::firstOrFail()->query_params)->toBe([
+        expect(TracingRequest::firstOrFail()->query_params)->toEqual([
             'source' => 'newsletter',
             'utm' => ['campaign' => 'spring'],
         ]);
@@ -54,7 +61,7 @@ describe('body_params', function () {
             'lines' => [['sku' => 'a-1']],
         ])->assertOk();
 
-        expect(TracingRequest::firstOrFail()->body_params)->toBe([
+        expect(TracingRequest::firstOrFail()->body_params)->toEqual([
             'order' => ['id' => 7],
             'lines' => [['sku' => 'a-1']],
         ]);
@@ -68,7 +75,7 @@ describe('body_params', function () {
             'lines' => ['a-1', 'a-2'],
         ])->assertOk();
 
-        expect(TracingRequest::firstOrFail()->body_params)->toBe([
+        expect(TracingRequest::firstOrFail()->body_params)->toEqual([
             'customer' => ['email' => 'a@b.c'],
             'lines' => ['a-1', 'a-2'],
         ]);
@@ -82,7 +89,7 @@ describe('body_params', function () {
             'sheet' => UploadedFile::fake()->create('rows.csv', 4),
         ])->assertOk();
 
-        expect(TracingRequest::firstOrFail()->body_params)->toBe(['label' => 'Q3']);
+        expect(TracingRequest::firstOrFail()->body_params)->toEqual(['label' => 'Q3']);
     });
 
     it('is null when the request carries no body at all', function () {
@@ -106,6 +113,6 @@ describe('body_params', function () {
 
         $this->json($method, '/orders/1?source=newsletter', ['field' => 'frombody'])->assertOk();
 
-        expect(TracingRequest::firstOrFail()->body_params)->toBe(['field' => 'frombody']);
+        expect(TracingRequest::firstOrFail()->body_params)->toEqual(['field' => 'frombody']);
     })->with(['put', 'patch']);
 });
