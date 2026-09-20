@@ -1,11 +1,13 @@
 .idea/
 /vendor/
+/resources/node_modules/
 composer.lock
 .phpunit.result.cache
 /.phpunit.cache/
-docker-compose.yml
-/docker/
-*.md
-!README.md
-!CHANGELOG.md
-!/docs/*.md
+/.claude/
+
+# Local working notes — never part of the repo
+/CLAUDE.md
+/TODO.md
+/PLAN.md
+/PRACTICES.md
